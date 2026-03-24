@@ -17,7 +17,7 @@
             background-color: #cbd5e1; 
         }
         .teacher-card {
-            transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
             border-width: 2px;
             border-color: #94a3b8;
         }
@@ -33,11 +33,9 @@
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        /* Custom scrollbar */
         ::-webkit-scrollbar { width: 6px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-        ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
     </style>
 </head>
 <body>
@@ -46,10 +44,10 @@
     <!-- Firebase SDK (External) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc, deleteDoc, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
         
-        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc, deleteDoc, addDoc };
+        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc, deleteDoc, addDoc };
     </script>
 
     <script type="text/babel">
@@ -67,26 +65,27 @@
         };
 
         // --- Safe Icon Component ---
-        const Icon = ({ name, size = 24, className = "" }) => {
+        const IconComp = ({ name, size = 24, className = "" }) => {
             const iconRef = useRef(null);
             useEffect(() => {
                 if (window.lucide && window.lucide.icons[name] && iconRef.current) {
-                    const svg = window.lucide.icons[name].toSvg({
+                    iconRef.current.innerHTML = window.lucide.icons[name].toSvg({
                         width: size, height: size, class: className
                     });
-                    iconRef.current.innerHTML = svg;
                 }
             }, [name, size, className]);
             return <span ref={iconRef} className="inline-flex items-center justify-center"></span>;
         };
 
         const App = () => {
-            // --- Core States ---
+            // --- Firebase Instance ---
             const [db, setDb] = useState(null);
+            const [auth, setAuth] = useState(null);
             const [user, setUser] = useState(null);
             const [isOnline, setIsOnline] = useState(false);
             const appId = 'nongsai-leave-v26';
 
+            // --- UI States ---
             const [currentPage, setCurrentPage] = useState('selection'); 
             const [selectedTeacher, setSelectedTeacher] = useState(null);
             const [showLoginModal, setShowLoginModal] = useState(false);
@@ -98,6 +97,7 @@
             const [requestToDelete, setRequestToDelete] = useState(null);
             const [isAuthorizedMaster, setIsAuthorizedMaster] = useState(false);
 
+            // Cloud Data
             const [requests, setRequests] = useState([]);
             const [cloudPasswords, setCloudPasswords] = useState({});
 
@@ -124,7 +124,67 @@
             const [formData, setFormData] = useState({ type: 'ลากิจ', startDate: '', endDate: '', reason: '', substitute: '' });
             const [newPasswordData, setNewPasswordData] = useState({ old: '', new: '', confirm: '' });
 
-            // --- Derived Logic (Hooks Always at Top) ---
+            // --- Setup Firebase (Rule 3) ---
+            useEffect(() => {
+                const init = async () => {
+                    const sdk = window.FirebaseSDK;
+                    if (!sdk) return;
+
+                    let finalConfig = firebaseConfig;
+                    try {
+                        if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+                            finalConfig = JSON.parse(__firebase_config);
+                        }
+                    } catch (e) {}
+
+                    const app = sdk.initializeApp(finalConfig);
+                    const fbAuth = sdk.getAuth(app);
+                    const fbDb = sdk.getFirestore(app);
+                    setAuth(fbAuth);
+                    setDb(fbDb);
+                    
+                    try {
+                        // Sign in first before any listeners
+                        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                            await sdk.signInWithCustomToken(fbAuth, __initial_auth_token);
+                        } else {
+                            await sdk.signInAnonymously(fbAuth);
+                        }
+                        setIsOnline(true);
+                    } catch (e) { 
+                        console.error("Firebase Auth Error:", e.message); 
+                    }
+                    
+                    const unsubscribe = sdk.onAuthStateChanged(fbAuth, (u) => {
+                        setUser(u);
+                    });
+                    return () => unsubscribe();
+                };
+                init();
+            }, []);
+
+            // --- Realtime Sync (Rule 1 & 2) ---
+            useEffect(() => {
+                if (!db || !user) return;
+                const sdk = window.FirebaseSDK;
+                
+                // Guard: Only fetch if user is authenticated
+                const reqCol = sdk.collection(db, 'artifacts', appId, 'public', 'data', 'requests');
+                const passCol = sdk.collection(db, 'artifacts', appId, 'public', 'data', 'passwords');
+
+                const unsubReq = sdk.onSnapshot(reqCol, (snaps) => {
+                    setRequests(snaps.docs.map(d => ({ id: d.id, ...d.data() })));
+                }, (err) => console.log("Firestore Access restricted: Check Rules"));
+
+                const unsubPass = sdk.onSnapshot(passCol, (snaps) => {
+                    const dict = {};
+                    snaps.docs.forEach(d => { dict[d.id] = d.data().password; });
+                    setCloudPasswords(dict);
+                });
+                return () => { unsubReq(); unsubPass(); };
+            }, [db, user, appId]);
+
+            // --- Logic Hooks ---
             const currentYearBE = new Date().getFullYear() + 543;
             const isAdmin = selectedTeacher?.role === 'admin';
             const isMaster = isAuthorizedMaster;
@@ -137,41 +197,6 @@
                 });
                 return { personal: calc('ลากิจ'), sick: calc('ลาป่วย'), maternity: calc('ลาคลอดบุตร'), paternity: calc('ลาช่วยภรรยา'), ordination: calc('ลาอุปสมบท') };
             }, [userRequests]);
-
-            // --- Firebase Init ---
-            useEffect(() => {
-                const init = async () => {
-                    const sdk = window.FirebaseSDK;
-                    if (!sdk) return;
-                    const app = sdk.initializeApp(firebaseConfig);
-                    const auth = sdk.getAuth(app);
-                    const db = sdk.getFirestore(app);
-                    setDb(db);
-                    
-                    try {
-                        await sdk.signInAnonymously(auth);
-                        sdk.onAuthStateChanged(auth, setUser);
-                        setIsOnline(true);
-                    } catch (e) { console.error("Firebase Auth Error", e); }
-                };
-                init();
-            }, []);
-
-            // --- Realtime Sync ---
-            useEffect(() => {
-                if (!db || !user) return;
-                const sdk = window.FirebaseSDK;
-                const unsubReq = sdk.onSnapshot(sdk.collection(db, 'artifacts', appId, 'public', 'data', 'requests'), (snaps) => {
-                    setRequests(snaps.docs.map(d => ({ id: d.id, ...d.data() })));
-                }, (err) => console.log("Sync active..."));
-
-                const unsubPass = sdk.onSnapshot(sdk.collection(db, 'artifacts', appId, 'public', 'data', 'passwords'), (snaps) => {
-                    const dict = {};
-                    snaps.docs.forEach(d => { dict[d.id] = d.data().password; });
-                    setCloudPasswords(dict);
-                });
-                return () => { unsubReq(); unsubPass(); };
-            }, [db, user]);
 
             // --- Helpers ---
             const formatDateBE = (dateStr) => {
@@ -224,7 +249,7 @@
                 };
 
                 try {
-                    if (isOnline) {
+                    if (isOnline && user) {
                         await sdk.addDoc(sdk.collection(db, 'artifacts', appId, 'public', 'data', 'requests'), newReq);
                         setNotifications([{ id: Date.now(), msg: "ส่งใบลาออนไลน์สำเร็จ" }]);
                     } else {
@@ -239,11 +264,21 @@
             };
 
             const updateStatus = async (id, newStatus) => {
-                if (!isOnline) return;
+                if (!isOnline || !user) return;
                 const sdk = window.FirebaseSDK;
                 await sdk.updateDoc(sdk.doc(db, 'artifacts', appId, 'public', 'data', 'requests', id), { status: newStatus });
                 setNotifications([{ id: Date.now(), msg: "อัปเดตสถานะสำเร็จ" }]);
                 setTimeout(() => setNotifications([]), 3000);
+            };
+
+            const handleLogout = () => {
+                setSelectedTeacher(null);
+                setCurrentPage('selection');
+                setShowLoginModal(false);
+                setIsAuthorizedMaster(false);
+                setIsMobileMenuOpen(false);
+                setPasswordInput('');
+                setActiveTab('dashboard');
             };
 
             const exportToExcel = () => {
@@ -265,13 +300,13 @@
                 return (
                     <div className="min-h-screen bg-slate-300 p-4 md:p-12 flex flex-col items-center antialiased">
                         {showLoginModal && (
-                            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-                                <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md p-10 text-center animate-fade-in border-4 border-white">
-                                    <div className="w-20 h-20 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-blue-200"><Icon name="lock" size={32} /></div>
-                                    <h3 className="text-2xl font-black text-slate-800 tracking-tight">ยืนยันรหัสผ่าน</h3>
-                                    <p className="text-blue-600 font-bold mb-8 uppercase text-xs">{selectedTeacher?.name}</p>
+                            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 text-center">
+                                <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md p-10 animate-fade-in border-4 border-white">
+                                    <div className="w-20 h-20 bg-blue-100 text-blue-700 rounded-full flex items-center justify-center mx-auto mb-4 border-2 border-blue-200"><IconComp name="lock" size={32} /></div>
+                                    <h3 className="text-2xl font-black text-slate-800">ยืนยันรหัสผ่าน</h3>
+                                    <p className="text-blue-600 font-bold mb-8 uppercase text-xs tracking-widest">{selectedTeacher?.name}</p>
                                     <form onSubmit={handleLoginSubmit} className="space-y-6">
-                                        <input autoFocus type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="รหัสผ่าน" className="w-full p-5 bg-slate-50 border-2 rounded-2xl text-center text-3xl font-black tracking-widest focus:ring-4 focus:ring-blue-100 outline-none" />
+                                        <input autoFocus type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="รหัสผ่าน" className="w-full p-4 bg-slate-50 border-2 rounded-2xl text-center text-3xl font-black tracking-widest focus:ring-4 focus:ring-blue-100 outline-none" />
                                         <div className="flex gap-4">
                                             <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-4 text-slate-500 font-bold">ยกเลิก</button>
                                             <button type="submit" className="flex-1 bg-blue-700 text-white py-4 rounded-2xl font-black shadow-lg">ตกลง</button>
@@ -281,19 +316,19 @@
                             </div>
                         )}
                         <div className="max-w-7xl w-full text-center">
-                            <div className="mb-12 inline-block px-10 py-5 bg-white/90 rounded-[2.5rem] border-2 border-slate-400 shadow-2xl">
-                                <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter italic">ระบบจัดการการลา</h1>
+                            <div className="mb-12 inline-block px-10 py-5 bg-white/90 rounded-[2.5rem] border-2 border-slate-400 shadow-xl">
+                                <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter italic">ระบบจัดการการลา ออนไลน์</h1>
                                 <p className="text-blue-700 font-bold uppercase tracking-widest text-[10px] mt-1">โรงเรียนหนองใสพรเจริญวิทยา (พ.ศ. {currentYearBE})</p>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                                 {teachersList.map(t => (
                                     <button key={t.id} onClick={() => { setSelectedTeacher(t); setShowLoginModal(true); }} className={`teacher-card bg-white p-6 rounded-[1.5rem] border-2 shadow-xl text-left flex flex-col justify-between h-48 group ${t.role === 'admin' ? 'border-blue-500 bg-blue-50/50' : 'border-slate-400'}`}>
                                         <div>
-                                            <h3 className="font-extrabold text-slate-900 text-xl leading-tight mb-2 break-words">{t.name} {t.role === 'admin' && <Icon name="shield-check" size={18} className="text-blue-600 inline ml-1" />}</h3>
+                                            <h3 className="font-extrabold text-slate-900 text-xl leading-tight mb-2 break-words">{t.name} {t.role === 'admin' && <IconComp name="shield-check" size={18} className="text-blue-600 inline ml-1" />}</h3>
                                             <span className={`inline-block px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest ${t.role === 'admin' ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-600'}`}>{t.pos}</span>
                                         </div>
                                         <div className="flex justify-end items-center mt-4">
-                                            <div className="p-2 bg-slate-100 border border-slate-200 rounded-full group-hover:bg-blue-600 group-hover:text-white transition-all shadow-sm"><Icon name="chevron-right" size={16} /></div>
+                                            <div className="p-2 bg-slate-100 border border-slate-200 rounded-full group-hover:bg-blue-600 group-hover:text-white transition-all"><IconComp name="chevron-right" size={16} /></div>
                                         </div>
                                     </button>
                                 ))}
@@ -309,15 +344,16 @@
                     {requestToDelete && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[110] flex items-center justify-center p-4 text-center">
                             <div className="bg-white rounded-[2rem] p-8 shadow-2xl max-w-sm w-full animate-fade-in border-4 border-red-50">
-                                <Icon name="alert-triangle" size={48} className="text-red-500 mb-4 mx-auto" />
-                                <h3 className="text-2xl font-black mb-2 uppercase">Delete?</h3>
+                                <IconComp name="alert-triangle" size={48} className="text-red-500 mb-4 mx-auto" />
+                                <h3 className="text-2xl font-black mb-2 uppercase">Delete Cloud Record?</h3>
                                 <p className="text-slate-500 text-sm mb-8 font-bold leading-relaxed px-4">ต้องการลบรายการลานี้ออกจากระบบออนไลน์อย่างถาวรหรือไม่?</p>
                                 <div className="flex gap-3">
                                     <button onClick={() => setRequestToDelete(null)} className="flex-1 py-3 font-bold bg-slate-100 rounded-2xl">ยกเลิก</button>
                                     <button onClick={async () => { 
-                                        if (isOnline) { await window.FirebaseSDK.deleteDoc(window.FirebaseSDK.doc(db, 'artifacts', appId, 'public', 'data', 'requests', requestToDelete)); }
+                                        if (isOnline && user) { await window.FirebaseSDK.deleteDoc(window.FirebaseSDK.doc(db, 'artifacts', appId, 'public', 'data', 'requests', requestToDelete)); }
+                                        else { setRequests(requests.filter(r => r.id !== requestToDelete)); }
                                         setRequestToDelete(null); 
-                                    }} className="flex-1 py-3 bg-red-600 text-white font-black rounded-2xl shadow-lg">ยืนยัน</button>
+                                    }} className="flex-1 py-3 bg-red-600 text-white font-black rounded-2xl">ลบข้อมูล</button>
                                 </div>
                             </div>
                         </div>
@@ -326,43 +362,41 @@
                     <aside className={`fixed md:sticky top-0 h-screen w-72 bg-white border-r-2 border-slate-200 z-40 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}`}>
                         <div className="p-8 font-black text-blue-700 italic text-2xl border-b-2 border-slate-50 mb-4 uppercase">System Menu</div>
                         <nav className="px-4 space-y-1 flex-1 overflow-y-auto font-bold text-slate-600">
-                            <button onClick={() => {setActiveTab('dashboard'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'dashboard' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-100'}`}><Icon name="layout-dashboard" size={20} /> แผงควบคุม</button>
-                            {!isAdmin && <button onClick={() => {setActiveTab('request'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'request' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-100'}`}><Icon name="file-text" size={20} /> เขียนใบลา</button>}
-                            <button onClick={() => {setActiveTab('history'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'history' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-100'}`}><Icon name="history" size={20} /> ประวัติการลา</button>
-                            {isAdmin && <button onClick={() => {setActiveTab('admin'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'admin' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-100'}`}><Icon name="user-check" size={20} /> พิจารณาอนุมัติ</button>}
-                            {isMaster && <button onClick={() => {setActiveTab('manage_all'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'manage_all' ? 'bg-amber-600 text-white shadow-lg' : 'hover:bg-slate-100'}`}><Icon name="edit-3" size={20} /> จัดการข้อมูล</button>}
-                            <div className="pt-4 border-t-2 border-slate-50 mt-4">
-                                <button onClick={() => {setActiveTab('settings'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'settings' ? 'bg-slate-800 text-white shadow-lg' : 'hover:bg-slate-100'}`}><Icon name="settings" size={20} /> ตั้งค่ารหัสผ่าน</button>
-                            </div>
+                            <button onClick={() => {setActiveTab('dashboard'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'dashboard' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-100'}`}><IconComp name="layout-dashboard" size={20} /> แผงควบคุม</button>
+                            {!isAdmin && <button onClick={() => {setActiveTab('request'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'request' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-100'}`}><IconComp name="file-text" size={20} /> เขียนใบลา</button>}
+                            <button onClick={() => {setActiveTab('history'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'history' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-100'}`}><IconComp name="history" size={20} /> ประวัติการลา</button>
+                            {isAdmin && <button onClick={() => {setActiveTab('admin'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'admin' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-100'}`}><IconComp name="user-check" size={20} /> พิจารณาอนุมัติ</button>}
+                            {isMaster && <button onClick={() => {setActiveTab('manage_all'); setIsMobileMenuOpen(false)}} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'manage_all' ? 'bg-amber-600 text-white shadow-lg' : 'hover:bg-slate-100'}`}><IconComp name="edit-3" size={20} /> จัดการข้อมูล</button>}
                         </nav>
                         <div className="p-6 border-t-2 bg-slate-50/50">
-                            <p className="text-sm font-black text-slate-900 truncate">{selectedTeacher?.name}</p>
+                            <p className="text-sm font-black text-slate-900 truncate leading-tight">{selectedTeacher?.name}</p>
                             <p className="text-[10px] text-blue-600 font-bold uppercase tracking-widest mt-1">{selectedTeacher?.pos} {isMaster && '(MASTER)'}</p>
-                            <button onClick={handleLogout} className="w-full mt-4 flex items-center justify-center gap-3 py-3 bg-red-50 text-red-600 rounded-2xl font-black text-xs uppercase shadow-sm border border-red-100 hover:bg-red-100 transition-all"><Icon name="log-out" size={18} /> Logout</button>
+                            <button onClick={handleLogout} className="w-full mt-4 flex items-center justify-center gap-3 py-3 bg-red-50 text-red-600 rounded-2xl font-black text-xs uppercase shadow-sm border border-red-100 hover:bg-red-100 transition-all"><IconComp name="log-out" size={18} /> Logout</button>
                         </div>
                     </aside>
 
                     <main className="flex-1 p-4 md:p-10 overflow-y-auto">
                         {notifications.map(n => <div key={n.id} className="fixed bottom-10 right-10 bg-slate-900 text-white px-8 py-5 rounded-3xl shadow-2xl z-[100] font-black text-sm animate-fade-in">{n.msg}</div>)}
                         
-                        <div className="mb-10 flex flex-col sm:row justify-between items-start sm:items-end gap-4">
+                        <header className="mb-10 flex flex-col sm:row justify-between items-start sm:items-end gap-4">
                             <div>
                                 <h2 className="text-4xl font-black uppercase tracking-tighter text-slate-900 italic leading-none">{activeTab.replace('_', ' ')}</h2>
                                 <p className={`text-[10px] font-bold mt-2 uppercase px-3 py-1 rounded-full inline-block tracking-widest ${isOnline ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                                    {isOnline ? '● System Online' : '● System Offline'}
+                                    {isOnline ? '● Sync Enabled' : '● System Offline'}
                                 </p>
                             </div>
-                            {(isAdmin || isMaster) && <button onClick={exportToExcel} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-xs flex gap-3 items-center uppercase tracking-widest shadow-xl hover:bg-emerald-700 transition-all active:scale-95"><Icon name="download" size={18} /> Export Excel</button>}
-                        </div>
+                            {(isAdmin || isMaster) && <button onClick={exportToExcel} className="bg-emerald-600 text-white px-8 py-4 rounded-2xl font-black text-xs flex gap-3 items-center uppercase tracking-widest shadow-xl hover:bg-emerald-700 active:scale-95 transition-all"><IconComp name="download" size={18} /> Export Excel</button>}
+                        </header>
 
+                        {/* View Contents */}
                         {activeTab === 'dashboard' && (
                             <div className="bg-white rounded-[2.5rem] shadow-xl border-2 border-slate-100 overflow-hidden animate-fade-in">
-                                <div className="p-10 border-b-2 font-black text-2xl uppercase text-slate-800 flex items-center gap-3 italic"><Icon name="clipboard-list" className="text-blue-600" /> สรุปยอดวันลาสะสม พ.ศ. {currentYearBE}</div>
+                                <div className="p-10 border-b-2 font-black text-2xl uppercase text-slate-800 flex items-center gap-3 italic"><IconComp name="bar-chart" className="text-blue-600" /> สรุปยอดวันลาสะสม พ.ศ. {currentYearBE}</div>
                                 <div className="overflow-x-auto"><table className="w-full text-left">
-                                    <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr><th className="px-10 py-6">ประเภทการลา</th><th className="px-10 py-6 text-center">อนุมัติแล้ว</th><th className="px-10 py-6 text-center">รออนุมัติ</th><th className="px-10 py-6 text-right">สถานะ</th></tr></thead>
+                                    <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-10 py-6">ประเภทการลา</th><th className="px-10 py-6 text-center">อนุมัติแล้ว</th><th className="px-10 py-6 text-center">รออนุมัติ</th><th className="px-10 py-6 text-right">สถานะ</th></tr></thead>
                                     <tbody className="divide-y-2 divide-slate-50 font-bold text-slate-700">
                                         {[{t:'ลากิจ', s:stats.personal}, {t:'ลาป่วย', s:stats.sick}, {t:'ลาคลอดบุตร', s:stats.maternity}, {t:'ลาช่วยภรรยา', s:stats.paternity}, {t:'ลาอุปสมบท', s:stats.ordination}].map((r, i) => (
-                                            <tr key={i} className="hover:bg-slate-50/50 transition-colors font-bold"><td className="px-10 py-8 text-lg uppercase">{r.t}</td><td className="px-10 py-8 text-center text-emerald-600 text-4xl font-black">{r.s.used}</td><td className="px-10 py-8 text-center text-amber-500 text-4xl font-black">{r.s.pending}</td><td className="px-10 py-8 text-right font-black uppercase text-[10px] text-slate-400">Cloud OK</td></tr>
+                                            <tr key={i} className="hover:bg-slate-50/50 transition-colors font-bold"><td className="px-10 py-8 text-lg uppercase">{r.t}</td><td className="px-10 py-8 text-center text-emerald-600 text-4xl font-black">{r.s.used}</td><td className="px-10 py-8 text-center text-amber-500 text-4xl font-black">{r.s.pending}</td><td className="px-10 py-8 text-right font-black uppercase text-[10px] text-slate-400">Connected</td></tr>
                                         ))}
                                     </tbody></table></div>
                             </div>
@@ -372,21 +406,21 @@
                             <div className="max-w-3xl bg-white rounded-[2.5rem] p-10 md:p-12 shadow-xl border-2 border-slate-100 animate-fade-in">
                                 <h3 className="text-3xl font-black mb-10 tracking-tight italic uppercase text-slate-900 border-b-4 border-blue-100 pb-4 inline-block">เขียนใบลาใหม่</h3>
                                 <form onSubmit={handleSubmitRequest} className="space-y-8 font-bold text-slate-700">
-                                    <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest italic ml-1">ประเภท</label><select name="type" value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 text-lg transition-all cursor-pointer"><option>ลากิจ</option><option>ลาป่วย</option><option>ลาคลอดบุตร</option><option>ลาช่วยภรรยาคลอดบุตร</option><option>ลาอุปสมบท</option></select></div>
+                                    <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest italic">เลือกประเภท</label><select name="type" value={formData.type} onChange={(e) => setFormData({...formData, type: e.target.value})} className="w-full p-5 bg-slate-50 border-2 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 text-lg transition-all"><option>ลากิจ</option><option>ลาป่วย</option><option>ลาคลอดบุตร</option><option>ลาช่วยภรรยาคลอดบุตร</option><option>ลาอุปสมบท</option></select></div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                        <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest italic ml-1">เริ่ม</label><input type="date" value={formData.startDate} required className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-bold transition-all" onChange={(e) => setFormData({...formData, startDate: e.target.value})} /></div>
-                                        <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest italic ml-1">ถึง</label><input type="date" value={formData.endDate} required className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-bold transition-all" onChange={(e) => setFormData({...formData, endDate: e.target.value})} /></div>
+                                        <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest italic text-red-500 italic">เริ่มวันที่</label><input type="date" value={formData.startDate} required className="w-full p-5 bg-slate-50 border-2 rounded-2xl font-bold" onChange={(e) => setFormData({...formData, startDate: e.target.value})} /></div>
+                                        <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest italic text-red-500 italic">ถึงวันที่</label><input type="date" value={formData.endDate} required className="w-full p-5 bg-slate-50 border-2 rounded-2xl font-bold" onChange={(e) => setFormData({...formData, endDate: e.target.value})} /></div>
                                     </div>
-                                    <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest italic ml-1">ผู้ปฏิบัติหน้าที่แทน</label><input type="text" value={formData.substitute} required placeholder="ระบุชื่อเพื่อนครูที่รับฝากเวร" className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-bold" onChange={(e) => setFormData({...formData, substitute: e.target.value})} /></div>
-                                    <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest italic ml-1">รายละเอียดเหตุผล</label><textarea value={formData.reason} rows="4" required placeholder="ระบุเหตุผลความจำเป็นในการขอลา..." className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-bold outline-none" onChange={(e) => setFormData({...formData, reason: e.target.value})}></textarea></div>
-                                    <button type="submit" className="w-full bg-blue-700 text-white p-6 rounded-[2rem] font-black text-xl hover:bg-blue-800 transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-4 uppercase tracking-widest"><Icon name="send" size={24} /> ส่งใบลาออนไลน์</button>
+                                    <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest italic">ผู้ปฏิบัติหน้าที่แทน</label><input type="text" value={formData.substitute} required placeholder="ชื่อเพื่อนครูที่รับฝากเวร" className="w-full p-5 bg-slate-50 border-2 rounded-2xl font-bold" onChange={(e) => setFormData({...formData, substitute: e.target.value})} /></div>
+                                    <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest italic">รายละเอียดเหตุผล</label><textarea value={formData.reason} rows="4" required placeholder="ระบุรายละเอียดเหตุผลการลา..." className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl font-bold outline-none" onChange={(e) => setFormData({...formData, reason: e.target.value})}></textarea></div>
+                                    <button type="submit" className="w-full bg-blue-700 text-white p-6 rounded-[2rem] font-black text-xl hover:bg-blue-800 transition-all shadow-2xl active:scale-95 flex items-center justify-center gap-4 uppercase tracking-widest"><IconComp name="send" size={24} /> ส่งใบลาออนไลน์</button>
                                 </form>
                             </div>
                         )}
 
                         {activeTab === 'history' && (
                             <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 overflow-hidden shadow-xl animate-fade-in">
-                                <table className="w-full text-left min-w-[600px]"><thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr><th className="px-10 py-6">ประเภท</th><th className="px-10 py-6 text-center">ระยะเวลา (พ.ศ.)</th><th className="px-10 py-6 text-right">สถานะ</th></tr></thead><tbody className="divide-y-2 divide-slate-50 font-bold text-slate-700">
+                                <table className="w-full text-left min-w-[600px]"><thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr><th className="px-10 py-6">ประเภทการลา</th><th className="px-10 py-6 text-center">ระยะเวลา (พ.ศ.)</th><th className="px-10 py-6 text-right">สถานะ</th></tr></thead><tbody className="divide-y-2 divide-slate-50 font-bold text-slate-700">
                                     {userRequests.map(req => (
                                         <tr key={req.id} className="hover:bg-slate-50/50 transition-colors"><td className="px-10 py-8 uppercase text-sm">{req.type}</td><td className="px-10 py-8 text-center text-slate-500 italic text-sm">{formatDateBE(req.startDate)} — {formatDateBE(req.endDate)}</td><td className="px-10 py-8 text-right"><span className={`px-5 py-2 rounded-2xl text-xs font-black uppercase tracking-widest ${req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : req.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{req.status === 'approved' ? 'อนุมัติแล้ว' : 'รอดำเนินการ'}</span></td></tr>
                                     ))}
@@ -410,7 +444,7 @@
                                                     <h4 className="font-black text-2xl text-slate-900">{t?.name} <span className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full uppercase ml-2">{t?.pos}</span></h4>
                                                     <div className="mt-2 text-blue-600 font-black text-sm uppercase tracking-widest flex gap-4 italic font-bold"><span>{req.type}</span><span>{formatDateBE(req.startDate)} - {formatDateBE(req.endDate)}</span></div>
                                                     <div className="bg-slate-50 p-8 rounded-[2rem] border-l-[12px] border-blue-600 mt-6 italic font-bold text-slate-600 text-xl leading-relaxed shadow-inner">"{req.reason}"</div>
-                                                    <p className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] flex items-center gap-2 underline decoration-blue-100 decoration-4">ผู้ปฏิบัติแทน: {req.substitute || '-'}</p>
+                                                    <p className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] italic flex items-center gap-2 underline decoration-blue-100 decoration-4">ผู้ปฏิบัติแทน: {req.substitute || '-'}</p>
                                                 </div>
                                                 <div className="flex gap-4">
                                                     <button onClick={() => updateStatus(req.id, 'rejected')} className="px-8 py-5 border-2 border-red-100 text-red-600 font-black rounded-2xl uppercase text-xs tracking-widest hover:bg-red-50">Reject</button>
@@ -428,10 +462,10 @@
                             <div className="space-y-6 animate-fade-in">
                                 <div className="bg-gradient-to-r from-amber-600 to-amber-500 rounded-[3rem] p-10 text-white shadow-2xl flex justify-between items-center relative overflow-hidden">
                                     <div className="relative z-10 font-black"><h3 className="text-3xl italic uppercase tracking-tighter italic leading-none">DATA MANAGER</h3><p className="font-bold opacity-90 mt-1 uppercase text-xs tracking-widest">ธุรการ: จัดการข้อมูลออนไลน์ทั้งหมด</p></div>
-                                    <Icon name="shield-alert" size={120} className="absolute right-10 opacity-10" />
+                                    <IconComp name="shield-alert" size={120} className="absolute right-10 opacity-10" />
                                 </div>
                                 <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 overflow-hidden shadow-xl overflow-x-auto">
-                                    <table className="w-full text-left min-w-[900px]"><thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr><th className="px-8 py-6">ครู</th><th className="px-8 py-6">ประเภท</th><th className="px-8 py-6 text-center">ระยะเวลา</th><th className="px-8 py-6 text-center">สถานะ</th><th className="px-8 py-6 text-right">ดำเนินการ</th></tr></thead><tbody className="divide-y-2 divide-slate-100 font-bold text-slate-700 text-base">
+                                    <table className="w-full text-left min-w-[900px]"><thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400"><tr><th className="px-8 py-6 text-left">ครู</th><th className="px-8 py-6 text-left">ประเภท</th><th className="px-8 py-6 text-center">ระยะเวลา</th><th className="px-8 py-6 text-center">สถานะ</th><th className="px-8 py-6 text-right">ดำเนินการ</th></tr></thead><tbody className="divide-y-2 divide-slate-100 font-bold text-slate-700 text-base">
                                         {requests.map(req => {
                                             const t = teachersList.find(x => x.id === req.userId);
                                             return (
@@ -441,7 +475,7 @@
                                                     <td className="px-8 py-6 text-center text-sm font-medium italic">{formatDateBE(req.startDate)} - {formatDateBE(req.endDate)}</td>
                                                     <td className="px-8 py-6 text-center uppercase text-[10px]"><span className={`px-3 py-1 rounded-lg tracking-widest ${req.status === 'approved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>{req.status}</span></td>
                                                     <td className="px-8 py-6 text-right">
-                                                        <button onClick={() => setRequestToDelete(req.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-all"><Icon name="trash-2" size={18} /></button>
+                                                        <button onClick={() => setRequestToDelete(req.id)} className="p-3 bg-red-50 text-red-500 rounded-xl hover:bg-red-100 transition-all"><IconComp name="trash-2" size={18} /></button>
                                                     </td>
                                                 </tr>
                                             );
@@ -452,8 +486,8 @@
                         )}
 
                         {activeTab === 'settings' && (
-                            <div className="max-w-2xl bg-white rounded-[2.5rem] shadow-xl border-2 border-slate-100 p-12 animate-fade-in">
-                                <h3 className="text-3xl font-black text-slate-900 mb-8 uppercase tracking-tight italic flex items-center gap-3 italic leading-none"><Icon name="key" className="text-blue-600" /> CHANGE SECURITY</h3>
+                            <div className="max-w-2xl bg-white rounded-[2.5rem] shadow-xl border-2 border-slate-100 p-12 animate-fade-in text-center">
+                                <h3 className="text-3xl font-black text-slate-900 mb-8 uppercase tracking-tight italic flex items-center justify-center gap-3 italic leading-none"><IconComp name="key" className="text-blue-600" /> SECURITY SETTINGS</h3>
                                 <form onSubmit={async (e) => {
                                     e.preventDefault();
                                     if (!isOnline) { alert("ระบบ Offline: ไม่สามารถแก้ไขรหัสผ่านคลาวด์ได้"); return; }
@@ -471,17 +505,4 @@
                                         <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 italic">New Password</label><input type="password" value={newPasswordData.new} required className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl outline-none focus:border-blue-500 font-black tracking-widest text-center text-xl" onChange={(e) => setNewPasswordData({...newPasswordData, new: e.target.value})} /></div>
                                         <div className="space-y-2"><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 italic">Confirm New</label><input type="password" value={newPasswordData.confirm} required className="w-full p-5 bg-slate-50 border-2 border-slate-200 rounded-2xl outline-none focus:border-blue-500 font-black tracking-widest text-center text-xl" onChange={(e) => setNewPasswordData({...newPasswordData, confirm: e.target.value})} /></div>
                                     </div>
-                                    <button type="submit" className="w-full bg-slate-900 text-white p-6 rounded-[2rem] font-black text-lg uppercase shadow-xl hover:bg-black active:scale-95 tracking-widest transition-all">Update Database Password</button>
-                                </form>
-                            </div>
-                        )}
-                    </main>
-                </div>
-            );
-        };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+                                    <button type="submit" className="w-full bg-slate-900 text-white p-6 rounded-[2rem] font-black text-lg uppercase shadow-xl hover:bg-black active:scale-95
