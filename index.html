@@ -240,6 +240,30 @@
                 finally { setIsSubmitting(false); }
             };
 
+            const exportToExcel = () => {
+                const headers = ['ลำดับ', 'ชื่อ-นามสกุล', 'ตำแหน่ง', 'ประเภทการลา', 'เริ่มวันที่', 'ถึงวันที่', 'เหตุผล', 'ผู้สอนแทน', 'สถานะ'];
+                const rows = requests.map((req, index) => {
+                    const t = teachersList.find(x => x.id === req.userId);
+                    return [
+                        index + 1,
+                        t?.name || 'ไม่ระบุ',
+                        t?.pos || '-',
+                        req.type,
+                        formatDateBE(req.startDate),
+                        formatDateBE(req.endDate),
+                        (req.reason || '').replace(/,/g, ' '),
+                        req.substitute || '-',
+                        req.status === 'approved' ? 'อนุมัติแล้ว' : req.status === 'pending' ? 'รอดำเนินการ' : 'ถูกปฏิเสธ'
+                    ];
+                });
+                const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `รายงานการลา_รร_หนองใส_${currentYearBE}.csv`;
+                link.click();
+            };
+
             if (currentPage === 'selection') {
                 return (
                     <div className="min-h-screen bg-slate-300 p-4 md:p-12 flex flex-col items-center">
@@ -252,7 +276,7 @@
                                     <form onSubmit={handleLoginSubmit} className="space-y-6">
                                         <input autoFocus type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="ป้อนรหัสผ่าน" className="w-full p-4 bg-slate-50 border-2 rounded-2xl text-center text-3xl font-black tracking-widest outline-none focus:ring-4 focus:ring-blue-100" />
                                         <div className="flex gap-4">
-                                            <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">ยกเลิก</button>
+                                            <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-all">ยกเลิก</button>
                                             <button type="submit" className="flex-1 bg-blue-700 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-blue-800 transition-all">ตกลง</button>
                                         </div>
                                     </form>
@@ -286,9 +310,9 @@
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
                             <div className="bg-white rounded-[2.5rem] p-10 shadow-2xl max-w-sm w-full text-center border-4 border-green-50 animate-fade-in font-black">
                                 <Icon name="check-circle" size={56} className="text-green-600 mb-6 mx-auto" />
-                                <h3 className="text-3xl font-black text-slate-800 mb-2 italic">ส่งใบลาสำเร็จ!</h3>
-                                <p className="text-slate-500 font-bold mb-8 italic text-sm">ข้อมูลบันทึกลง Cloud แล้ว ข้อมูลจะไม่หายเมื่อ Refresh</p>
-                                <button onClick={() => setIsSuccessModalOpen(false)} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black shadow-lg">ตกลง</button>
+                                <h3 className="text-3xl font-black text-slate-800 mb-2 italic text-center">ส่งใบลาสำเร็จ!</h3>
+                                <p className="text-slate-500 font-bold mb-8 italic text-sm text-center">ข้อมูลถูกบันทึกขึ้นคลาวด์แล้ว ข้อมูลจะไม่หายเมื่อรีเฟรชหน้าจอ</p>
+                                <button onClick={() => setIsSuccessModalOpen(false)} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-green-700 transition-all">ตกลง</button>
                             </div>
                         </div>
                     )}
@@ -314,124 +338,4 @@
                         <nav className="flex-1 p-4 space-y-2 font-black text-slate-600">
                             <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'dashboard' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="layout-dashboard" /> แผงควบคุม</button>
                             {!isAdmin && <button onClick={() => setActiveTab('request')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'request' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="file-text" /> เขียนใบลา</button>}
-                            <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'history' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="history" /> ประวัติการลา</button>
-                            {(isAdmin || isMaster) && <button onClick={() => setActiveTab('admin')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'admin' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="user-check" /> พิจารณาอนุมัติ</button>}
-                            {(isAdmin || isMaster) && <button onClick={() => setActiveTab('summary')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'summary' ? 'bg-amber-600 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="bar-chart-3" /> สรุปการลาครู</button>}
-                        </nav>
-                        <div className="p-6 border-t-2 bg-slate-50/50 text-center font-black">
-                            <p className="text-sm font-black text-slate-900 leading-tight">{selectedTeacher?.name}</p>
-                            <p className="text-[10px] text-blue-600 font-bold uppercase mt-1 italic">{selectedTeacher?.pos} {isMaster && '(MASTER)'}</p>
-                            <button onClick={() => window.location.reload()} className="w-full mt-4 py-3 bg-red-50 text-red-600 rounded-2xl font-bold text-xs uppercase shadow-sm">Logout</button>
-                        </div>
-                    </aside>
-                    <main className="flex-1 p-4 md:p-10 overflow-y-auto animate-fade-in font-black">
-                        <header className="mb-10 flex justify-between items-end border-b pb-6">
-                            <div><h2 className="text-4xl font-black uppercase text-slate-900 italic tracking-tighter leading-none">{activeTab}</h2><p className="text-green-600 font-bold text-xs mt-2 uppercase tracking-widest italic">{isOnline ? '● ออนไลน์' : '● กำลังเชื่อมต่อ...'}</p></div>
-                            {activeTab === 'summary' && isMaster && (
-                                <button onClick={() => setShowResetModal(true)} className="bg-red-50 text-red-600 px-6 py-3 rounded-2xl font-black text-xs border-2 border-red-200 hover:bg-red-600 hover:text-white transition-all flex items-center gap-2">
-                                    <Icon name="refresh-ccw" size={16} /> ล้างข้อมูลยกเทอม
-                                </button>
-                            )}
-                        </header>
-
-                        {activeTab === 'summary' && (
-                            <div className="space-y-6 animate-fade-in font-black">
-                                <div className="bg-amber-600 rounded-[3rem] p-10 text-white shadow-xl flex justify-between items-center relative overflow-hidden font-black">
-                                    <div className="relative z-10 font-black"><h3 className="text-4xl italic uppercase tracking-tighter">LEAVE SUMMARY</h3><p className="font-bold opacity-90 mt-1 uppercase text-xs tracking-widest italic">สรุปยอดวันลาสะสม: จำนวนวัน (จำนวนครั้งที่ลา)</p></div>
-                                    <Icon name="bar-chart-3" size={100} className="absolute right-10 opacity-10" />
-                                </div>
-                                <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 overflow-hidden shadow-sm overflow-x-auto">
-                                    <table className="w-full text-left min-w-[900px] font-black"><thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-8 py-6">ชื่อ-นามสกุล</th><th className="px-8 py-6 text-center">ลาป่วย (วัน/ครั้ง)</th><th className="px-8 py-6 text-center">ลากิจ (วัน/ครั้ง)</th><th className="px-8 py-6 text-center">ลาอื่นๆ (วัน/ครั้ง)</th><th className="px-8 py-6 text-center bg-slate-100">รวมทั้งหมด</th><th className="px-8 py-6 text-right">สถานะ</th></tr></thead><tbody className="divide-y divide-slate-100 text-slate-700 text-base font-black">
-                                        {globalSummary.map(t => (
-                                            <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                                                <td className="px-8 py-6 font-black text-slate-900 leading-tight">{t.name}<p className="text-[10px] text-slate-400 uppercase tracking-widest font-black">{t.pos}</p></td>
-                                                <td className="px-8 py-6 text-center text-red-600 text-xl font-black">{t.sick.days} <span className="text-xs text-slate-400">({t.sick.times})</span></td>
-                                                <td className="px-8 py-6 text-center text-blue-600 text-xl font-black">{t.personal.days} <span className="text-xs text-slate-400">({t.personal.times})</span></td>
-                                                <td className="px-8 py-6 text-center text-amber-600 text-xl font-black">{t.others.days} <span className="text-xs text-slate-400">({t.others.times})</span></td>
-                                                <td className="px-8 py-6 text-center bg-slate-50 text-slate-900 text-2xl font-black">{t.total.days} <span className="text-xs text-slate-400">({t.total.times})</span></td>
-                                                <td className="px-8 py-6 text-right"><span className="text-[10px] bg-green-100 text-green-600 px-3 py-1 rounded-full uppercase font-black">Verified</span></td>
-                                            </tr>
-                                        ))}
-                                    </tbody></table>
-                                </div>
-                            </div>
-                        )}
-
-                        {activeTab === 'dashboard' && (
-                            <div className="bg-white rounded-[2.5rem] shadow-xl border-2 border-slate-100 overflow-hidden font-black">
-                                <div className="p-10 border-b-2 font-black text-2xl uppercase italic text-slate-800 flex items-center gap-3"><Icon name="clipboard-list" className="text-blue-600" /> ยอดวันลา พ.ศ. {currentYearBE}</div>
-                                <div className="overflow-x-auto"><table className="w-full text-left">
-                                    <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-10 py-6">ประเภทการลา</th><th className="px-10 py-6 text-center">อนุมัติแล้ว</th><th className="px-10 py-6 text-center">รออนุมัติ</th></tr></thead>
-                                    <tbody className="divide-y-2 font-bold text-slate-700 text-lg">
-                                        {[{t:'ลากิจ', s:stats.personal}, {t:'ลาป่วย', s:stats.sick}, {t:'ลาคลอดบุตร', s:stats.maternity}, {t:'ลาช่วยภรรยา', s:stats.paternity}, {t:'ลาอุปสมบท', s:stats.ordination}].map((r, i) => (
-                                            <tr key={i} className="hover:bg-slate-50 transition-colors font-bold"><td className="px-10 py-8 text-lg uppercase leading-none">{r.t}</td><td className="px-10 py-8 text-center text-emerald-600 text-4xl font-black leading-none">{r.s.used}</td><td className="px-10 py-8 text-center text-amber-500 text-4xl font-black leading-none">{r.s.pending}</td></tr>
-                                        ))}
-                                    </tbody></table></div>
-                            </div>
-                        )}
-
-                        {activeTab === 'request' && (
-                            <div className="max-w-3xl bg-white rounded-[2.5rem] p-10 md:p-12 shadow-xl border-2 border-slate-100 font-black">
-                                <h3 className="text-3xl font-black mb-10 uppercase border-b-4 border-blue-100 pb-4 inline-block leading-none italic font-black">เขียนใบลาใหม่</h3>
-                                <form onSubmit={handleSubmitRequest} className="space-y-8 font-bold text-slate-700">
-                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400 font-black font-black">ประเภทการลา</label><select name="type" value={formData.type} onChange={(e)=>setFormData({...formData, type:e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 text-lg"><option>ลากิจ</option><option>ลาป่วย</option><option>ลาคลอดบุตร</option><option>ลาช่วยภรรยา</option><option>ลาอุปสมบท</option></select></div>
-                                    <div className="grid grid-cols-2 gap-8">
-                                        <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-red-500 italic font-black font-black">เริ่มวันที่</label><input type="date" value={formData.startDate} required className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" onChange={(e)=>setFormData({...formData, startDate:e.target.value})} /></div>
-                                        <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-red-500 italic font-black font-black">ถึงวันที่</label><input type="date" value={formData.endDate} required className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" onChange={(e)=>setFormData({...formData, endDate:e.target.value})} /></div>
-                                    </div>
-                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400 font-black font-black">ผู้ปฏิบัติหน้าที่แทน</label><input type="text" value={formData.substitute} required placeholder="ระบุชื่อครูปฏิบัติหน้าที่แทน" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold transition-all focus:border-blue-500" onChange={(e)=>setFormData({...formData, substitute:e.target.value})} /></div>
-                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400 font-black font-black">รายละเอียดเหตุผล</label><textarea value={formData.reason} rows="4" required placeholder="ระบุเหตุผลในการขอลาครั้งนี้..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500 font-black" onChange={(e)=>setFormData({...formData, reason:e.target.value})}></textarea></div>
-                                    <button type="submit" disabled={isSubmitting} className="w-full bg-blue-700 text-white p-6 rounded-[2rem] font-black text-xl shadow-2xl active:scale-95 uppercase tracking-widest flex items-center justify-center gap-4 hover:bg-blue-800 transition-all font-black">
-                                        <Icon name="send" /> {isSubmitting ? 'กำลังส่งข้อมูล...' : 'ยืนยันส่งใบลาออนไลน์'}
-                                    </button>
-                                </form>
-                            </div>
-                        )}
-
-                        {activeTab === 'history' && (
-                            <div className="bg-white rounded-[2.5rem] border-2 overflow-hidden shadow-xl border-slate-100 font-black">
-                                <table className="w-full text-left min-w-[600px]"><thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest"><tr><th className="px-10 py-6">ประเภท</th><th className="px-10 py-6 text-center">ระยะเวลาลา</th><th className="px-10 py-6 text-right font-black">สถานะ</th></tr></thead><tbody className="divide-y-2 font-bold text-slate-700 text-lg">
-                                    {userRequests.map(req => (
-                                        <tr key={req.id} className="hover:bg-slate-50 transition-colors font-bold"><td className="px-10 py-8 uppercase text-sm leading-none">{req.type}</td><td className="px-10 py-8 text-center text-slate-500 italic text-sm leading-none font-bold">{formatDateBE(req.startDate)} — {formatDateBE(req.endDate)}</td><td className="px-10 py-8 text-right leading-none font-black"><span className={`px-5 py-2 rounded-2xl text-xs font-black uppercase tracking-widest ${req.status === 'approved' ? 'bg-green-100 text-green-700' : req.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{req.status === 'approved' ? 'อนุมัติแล้ว' : 'รอดำเนินการ'}</span></td></tr>
-                                    ))}
-                                </tbody></table>
-                            </div>
-                        )}
-
-                        {activeTab === 'admin' && (
-                            <div className="space-y-6 font-black">
-                                <div className="bg-blue-900 rounded-[3.5rem] p-10 text-white shadow-2xl flex justify-between items-center relative overflow-hidden leading-tight font-black">
-                                    <div className="relative z-10 font-black"><h3 className="text-4xl italic uppercase tracking-tighter font-black font-black">PENDING</h3><p className="font-bold opacity-80 mt-1 uppercase text-xs tracking-widest italic font-black">รายการที่รอพิจารณาออนไลน์</p></div>
-                                    <div className="text-right z-10 font-black leading-none font-black"><span className="text-8xl text-yellow-400 font-black">{requests.filter(r => r.status === 'pending').length}</span></div>
-                                </div>
-                                <div className="space-y-4">
-                                    {requests.filter(r => r.status === 'pending').map(req => {
-                                        const t = teachersList.find(x => x.id === req.userId);
-                                        return (
-                                            <div key={req.id} className="bg-white p-10 rounded-[2.5rem] border-2 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-8 hover:border-blue-400 group border-slate-100 transition-all font-black font-black">
-                                                <div className="flex-1">
-                                                    <h4 className="font-black text-2xl text-slate-900 flex items-center gap-2 leading-tight font-black font-black">{t?.name} <span className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full uppercase ml-2 font-black">{t?.pos}</span></h4>
-                                                    <div className="mt-2 text-blue-600 font-black text-sm uppercase tracking-widest flex gap-4 italic font-bold"><span>{req.type}</span><span>{formatDateBE(req.startDate)} - {formatDateBE(req.endDate)}</span></div>
-                                                    <div className="bg-slate-50 p-8 rounded-[2rem] border-l-[12px] border-blue-600 mt-6 italic font-bold text-slate-600 text-xl leading-relaxed shadow-inner font-black font-black">"{req.reason}"</div>
-                                                    <p className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] italic flex items-center gap-2 underline decoration-blue-100 decoration-4 leading-none font-black">ผู้ปฏิบัติแทน: {req.substitute || '-'}</p>
-                                                </div>
-                                                <div className="flex gap-4">
-                                                    <button onClick={() => handleApprove(req.id, 'rejected')} className="px-8 py-5 border-2 border-red-100 text-red-600 font-black rounded-2xl uppercase text-xs tracking-widest hover:bg-red-50 transition-all font-black">Reject</button>
-                                                    <button onClick={() => handleApprove(req.id, 'approved')} className="px-14 py-5 bg-emerald-600 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-xl hover:bg-emerald-700 active:scale-95 transition-all font-black">Approve</button>
-                                                </div>
-                                            </div>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                    </main>
-                </div>
-            );
-        };
-
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+                            <button onClick={() => setActiveTab('history')} className={`w-full flex
