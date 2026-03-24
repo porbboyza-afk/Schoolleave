@@ -232,8 +232,8 @@
                         )}
                         <div className="max-w-7xl w-full text-center">
                             <div className="mb-12 inline-block px-10 py-6 bg-white/95 rounded-[2.5rem] border-2 border-slate-400 shadow-2xl animate-fade-in">
-                                <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter italic leading-none">ระบบจัดการการลา โรงเรียนหนองใส</h1>
-                                <p className="text-blue-700 font-bold uppercase tracking-widest text-[10px] mt-1 italic">Leave Online Cloud (พ.ศ. {currentYearBE})</p>
+                                <h1 className="text-3xl md:text-4xl font-black text-slate-900 uppercase tracking-tighter italic leading-none">ระบบจัดการการลา โรงเรียนหนองใสพรเจริญวิทยา</h1>
+                                <p className="text-blue-700 font-bold uppercase tracking-widest text-[10px] mt-2 italic">Leave Online Cloud (พ.ศ. {currentYearBE})</p>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                                 {teachersList.map(t => (
@@ -260,6 +260,19 @@
                                 <h3 className="text-3xl font-black text-slate-800 mb-2 italic text-center">ส่งใบลาสำเร็จ!</h3>
                                 <p className="text-slate-500 font-bold mb-8 italic text-sm text-center">ข้อมูลถูกบันทึกขึ้นคลาวด์แล้ว ข้อมูลจะไม่หายเมื่อรีเฟรชหน้าจอ</p>
                                 <button onClick={() => setIsSuccessModalOpen(false)} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-green-700 transition-all">ตกลง</button>
+                            </div>
+                        </div>
+                    )}
+                    {requestToDelete && (
+                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
+                            <div className="bg-white rounded-[2.5rem] p-10 shadow-2xl max-w-sm w-full text-center animate-fade-in border-4 border-red-50">
+                                <Icon name="alert-circle" size={56} className="text-red-600 mb-6 mx-auto" />
+                                <h3 className="text-2xl font-black text-slate-800 mb-2">ยืนยันการลบ?</h3>
+                                <p className="text-slate-500 mb-8">คุณต้องการลบรายการลานี้ถาวรใช่หรือไม่</p>
+                                <div className="flex gap-4">
+                                    <button onClick={() => setRequestToDelete(null)} className="flex-1 py-4 bg-slate-100 font-bold rounded-xl">ยกเลิก</button>
+                                    <button onClick={() => handleDelete(requestToDelete)} className="flex-1 py-4 bg-red-600 text-white font-black rounded-xl shadow-lg">ลบข้อมูล</button>
+                                </div>
                             </div>
                         </div>
                     )}
@@ -316,7 +329,7 @@
 
                         {activeTab === 'history' && (
                             <div className="bg-white rounded-[2.5rem] border-2 overflow-hidden shadow-xl border-slate-100">
-                                <table className="w-full text-left min-w-[600px]"><thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-10 py-6 text-left">ประเภท</th><th className="px-10 py-6 text-center">ระยะเวลาลา (พ.ศ.)</th><th className="px-10 py-6 text-right">สถานะ</th></tr></thead><tbody className="divide-y-2 font-bold text-slate-700 text-lg">
+                                <table className="w-full text-left min-w-[600px]"><thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest"><tr><th className="px-10 py-6 text-left">ประเภท</th><th className="px-10 py-6 text-center">ระยะเวลาลา (พ.ศ.)</th><th className="px-10 py-6 text-right">สถานะ</th></tr></thead><tbody className="divide-y-2 font-bold text-slate-700 text-lg">
                                     {userRequests.map(req => (
                                         <tr key={req.id} className="hover:bg-slate-50 transition-colors font-bold"><td className="px-10 py-8 uppercase text-sm leading-none">{req.type}</td><td className="px-10 py-8 text-center text-slate-500 italic text-sm leading-none font-bold">{formatDateBE(req.startDate)} — {formatDateBE(req.endDate)}</td><td className="px-10 py-8 text-right leading-none"><span className={`px-5 py-2 rounded-2xl text-xs font-black uppercase tracking-widest ${req.status === 'approved' ? 'bg-green-100 text-green-700' : req.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{req.status === 'approved' ? 'อนุมัติแล้ว' : 'รอดำเนินการ'}</span></td></tr>
                                     ))}
