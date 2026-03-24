@@ -26,9 +26,6 @@
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #f1f1f1; }
         ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
-        
-        /* เพิ่มเพื่อป้องกันตารางล้นจอในมือถือ */
-        .table-responsive-wrapper { overflow-x: auto; -webkit-overflow-scrolling: touch; }
     </style>
 </head>
 <body>
@@ -75,7 +72,7 @@
                     ref.current.innerHTML = window.lucide.icons[name].toSvg({ width: size, height: size, class: className });
                 }
             }, [name, size, className]);
-            return <span ref={ref} className={`inline-flex items-center ${className}`}></span>;
+            return <span ref={ref} className={`inline-flex items-center justify-center ${className}`} style={{ minWidth: size, minHeight: size }}></span>;
         };
 
         const App = () => {
@@ -94,7 +91,7 @@
             const [isAuthorizedMaster, setIsAuthorizedMaster] = useState(false);
             const [requestToDelete, setRequestToDelete] = useState(null);
             const [showResetModal, setShowResetModal] = useState(false);
-            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false); // เพิ่ม State สำหรับจัดการเมนูมือถือ
+            const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
             const [formData, setFormData] = useState({ type: 'ลากิจ', startDate: '', endDate: '', reason: '', substitute: '' });
 
@@ -127,6 +124,7 @@
             const currentYearBE = 2569;
 
             const userRequests = useMemo(() => selectedTeacher ? requests.filter(r => r.userId === selectedTeacher.id) : [], [requests, selectedTeacher]);
+            
             const stats = useMemo(() => {
                 const calc = (type) => ({ 
                     used: userRequests.filter(r => r.type === type && r.status === 'approved').length, 
@@ -135,7 +133,7 @@
                 return { personal: calc('ลากิจ'), sick: calc('ลาป่วย'), maternity: calc('ลาคลอดบุตร'), paternity: calc('ลาช่วยภรรยา'), ordination: calc('ลาอุปสมบท') };
             }, [userRequests]);
 
-            // สถิติสำหรับ ผอ.
+            // สถิติสำหรับ ผอ. (รวมทั้งโรงเรียน)
             const globalSummary = useMemo(() => {
                 return teachersList.map(t => {
                     const teacherApprovedRequests = requests.filter(r => r.userId === t.id && r.status === 'approved');
@@ -143,6 +141,9 @@
                     const calculateStats = (type) => {
                         const typeRequests = teacherApprovedRequests.filter(r => r.type === type);
                         const days = typeRequests.reduce((acc, curr) => {
+                            // เพิ่ม Safety Check เพื่อแก้ปัญหา "หน้าจอขาว" เวลาข้อมูลในฐานข้อมูลแหว่ง
+                            if (!curr.startDate || !curr.endDate) return acc;
+                            
                             const start = new Date(curr.startDate.replace(/(\d{4})/, (m) => parseInt(m) - 543));
                             const end = new Date(curr.endDate.replace(/(\d{4})/, (m) => parseInt(m) - 543));
                             const diffTime = Math.abs(end - start);
@@ -154,8 +155,9 @@
 
                     const sickStats = calculateStats('ลาป่วย');
                     const personalStats = calculateStats('ลากิจ');
+                    
                     const maternity = calculateStats('ลาคลอดบุตร');
-                    const paternity = calculateStats('ลาช่วยภรรยา');
+                    const paternity = calculateStats('ลาช่วยภรรยาคลอดบุตร');
                     const ordination = calculateStats('ลาอุปสมบท');
 
                     const otherDays = maternity.days + paternity.days + ordination.days;
@@ -193,15 +195,6 @@
                     setActiveTab(isMasterPass ? 'summary' : (selectedTeacher.role === 'admin' ? 'admin' : 'dashboard'));
                     setPasswordInput('');
                 } else { alert("รหัสผ่านไม่ถูกต้อง"); }
-            };
-
-            const handleLogout = () => {
-                setSelectedTeacher(null);
-                setCurrentPage('selection');
-                setShowLoginModal(false);
-                setIsAuthorizedMaster(false);
-                setFormData({ type: 'ลากิจ', startDate: '', endDate: '', reason: '', substitute: '' });
-                setIsMobileMenuOpen(false);
             };
 
             const handleSubmitRequest = async (e) => {
@@ -252,23 +245,48 @@
                 finally { setIsSubmitting(false); }
             };
 
-            // เปลี่ยนหน้าเมื่อคลิกเมนูในมือถือ
+            // แก้ไข Error: สร้างฟังก์ชัน changeTabMobile ที่เคยหายไปกลับมา
             const changeTabMobile = (tab) => {
                 setActiveTab(tab);
                 setIsMobileMenuOpen(false);
             };
 
+            // ฟังก์ชัน Export Excel ที่คุณเรียกหา
+            const exportToExcel = () => {
+                const headers = ['ลำดับ', 'ชื่อ-นามสกุล', 'ตำแหน่ง', 'ประเภทการลา', 'เริ่มวันที่', 'ถึงวันที่', 'เหตุผล', 'ผู้สอนแทน', 'สถานะ'];
+                const rows = requests.map((req, index) => {
+                    const t = teachersList.find(x => x.id === req.userId);
+                    return [
+                        index + 1,
+                        t?.name || 'ไม่ระบุ',
+                        t?.pos || '-',
+                        req.type,
+                        formatDateBE(req.startDate),
+                        formatDateBE(req.endDate),
+                        (req.reason || '').replace(/,/g, ' '),
+                        req.substitute || '-',
+                        req.status === 'approved' ? 'อนุมัติแล้ว' : req.status === 'pending' ? 'รอดำเนินการ' : 'ถูกปฏิเสธ'
+                    ];
+                });
+                const csvContent = "\uFEFF" + [headers, ...rows].map(e => e.join(",")).join("\n");
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement("a");
+                link.href = URL.createObjectURL(blob);
+                link.download = `รายงานการลา_รร_หนองใส_${currentYearBE}.csv`;
+                link.click();
+            };
+
             if (currentPage === 'selection') {
                 return (
-                    <div className="min-h-screen bg-slate-300 p-4 md:p-12 flex flex-col items-center animate-fade-in">
+                    <div className="min-h-screen bg-slate-300 p-4 md:p-12 flex flex-col items-center">
                         {showLoginModal && (
                             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-                                <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-10 animate-fade-in border-4 border-white text-center">
+                                <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md p-10 animate-fade-in border-4 border-white text-center">
                                     <Icon name="lock" size={48} className="text-blue-600 mb-4 mx-auto" />
-                                    <h3 className="text-2xl font-black text-slate-800 tracking-tight">ยืนยันตัวตน</h3>
+                                    <h3 className="text-2xl font-black text-slate-800 tracking-tight italic uppercase">ยืนยันตัวตน</h3>
                                     <p className="text-blue-600 font-bold mb-8 uppercase text-xs tracking-widest">{selectedTeacher?.name}</p>
                                     <form onSubmit={handleLoginSubmit} className="space-y-6">
-                                        <input autoFocus type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="ป้อนรหัส 4 หลัก" className="w-full p-4 bg-slate-50 border-2 rounded-2xl text-center text-3xl font-black tracking-widest outline-none focus:ring-4 focus:ring-blue-100" />
+                                        <input autoFocus type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="ป้อนรหัสผ่าน" className="w-full p-4 bg-slate-50 border-2 rounded-2xl text-center text-3xl font-black tracking-widest outline-none focus:ring-4 focus:ring-blue-100" />
                                         <div className="flex gap-4">
                                             <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-all">ยกเลิก</button>
                                             <button type="submit" className="flex-1 bg-blue-700 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-blue-800 transition-all">ตกลง</button>
@@ -298,16 +316,19 @@
                 );
             }
 
+            const handleLogoutButton = () => {
+                handleLogout();
+            };
+
             return (
                 <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row antialiased font-black relative overflow-x-hidden">
-                    
                     {/* Modals */}
                     {isSuccessModalOpen && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-[2.5rem] p-10 shadow-2xl max-w-sm w-full text-center border-4 border-green-50 animate-fade-in">
+                            <div className="bg-white rounded-[2.5rem] p-10 shadow-2xl max-w-sm w-full text-center border-4 border-green-50 animate-fade-in font-black">
                                 <Icon name="check-circle" size={56} className="text-green-600 mb-6 mx-auto" />
-                                <h3 className="text-3xl font-black text-slate-800 mb-2 italic">ส่งใบลาสำเร็จ!</h3>
-                                <p className="text-slate-500 font-bold mb-8 italic text-sm">ข้อมูลถูกบันทึกขึ้นคลาวด์แล้ว ข้อมูลจะไม่หายเมื่อรีเฟรชหน้าจอ</p>
+                                <h3 className="text-3xl font-black text-slate-800 mb-2 italic text-center">ส่งใบลาสำเร็จ!</h3>
+                                <p className="text-slate-500 font-bold mb-8 italic text-sm text-center">ข้อมูลถูกบันทึกขึ้นคลาวด์แล้ว ข้อมูลจะไม่หายเมื่อรีเฟรชหน้าจอ</p>
                                 <button onClick={() => setIsSuccessModalOpen(false)} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-green-700 transition-all">ตกลง</button>
                             </div>
                         </div>
@@ -343,19 +364,17 @@
                         </div>
                     )}
 
-                    {/* Mobile Header (แสดงเฉพาะบนมือถือ) */}
+                    {/* Mobile Header */}
                     <div className="md:hidden bg-blue-900 text-white p-4 flex justify-between items-center sticky top-0 z-40 shadow-md">
                         <div className="font-black italic text-xl tracking-tighter">SCHOOL LEAVE</div>
-                        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 bg-blue-800 rounded-lg text-white">
+                        <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="px-4 py-2 bg-blue-800 rounded-xl text-white flex items-center justify-center gap-2 shadow-sm active:scale-95 transition-transform">
                             <Icon name={isMobileMenuOpen ? "x" : "menu"} size={24} />
+                            <span className="font-black text-sm tracking-widest">เมนู</span>
                         </button>
                     </div>
 
                     {/* Mobile Overlay Background */}
-                    <div 
-                        className={`md:hidden fixed inset-0 bg-slate-900/50 z-30 transition-opacity duration-300 ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} 
-                        onClick={() => setIsMobileMenuOpen(false)}
-                    ></div>
+                    <div className={`md:hidden fixed inset-0 bg-slate-900/50 z-30 transition-opacity duration-300 ${isMobileMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`} onClick={() => setIsMobileMenuOpen(false)}></div>
 
                     {/* Sidebar (Responsive Layout) */}
                     <aside className={`fixed inset-y-0 left-0 z-40 w-72 bg-white border-r-2 border-slate-200 flex flex-col h-screen transform transition-transform duration-300 ease-in-out md:relative md:translate-x-0 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
@@ -375,21 +394,30 @@
                         <div className="p-6 border-t-2 bg-slate-50/50 text-center font-black hidden md:block">
                             <p className="text-sm font-black text-slate-900 leading-tight">{selectedTeacher?.name}</p>
                             <p className="text-[10px] text-blue-600 font-bold uppercase mt-1 italic">{selectedTeacher?.pos} {isMaster && '(MASTER)'}</p>
-                            <button onClick={handleLogout} className="w-full mt-4 py-3 bg-red-50 text-red-600 rounded-2xl font-bold text-xs uppercase shadow-sm">Logout</button>
+                            <button onClick={handleLogoutButton} className="w-full mt-4 py-3 bg-red-50 text-red-600 rounded-2xl font-bold text-xs uppercase shadow-sm">Logout</button>
                         </div>
                         <div className="p-4 md:hidden">
-                             <button onClick={handleLogout} className="w-full py-4 bg-red-100 text-red-700 rounded-2xl font-black text-sm uppercase shadow-sm flex items-center justify-center gap-2"><Icon name="log-out" size={18}/> ออกจากระบบ</button>
+                             <button onClick={handleLogoutButton} className="w-full py-4 bg-red-100 text-red-700 rounded-2xl font-black text-sm uppercase shadow-sm flex items-center justify-center gap-2"><Icon name="log-out" size={18}/> ออกจากระบบ</button>
                         </div>
                     </aside>
 
                     <main className="flex-1 p-4 md:p-10 w-full md:w-auto overflow-x-hidden animate-fade-in font-black">
                         <header className="mb-8 md:mb-10 flex flex-col md:flex-row justify-between md:items-end border-b pb-6 gap-4">
                             <div><h2 className="text-3xl md:text-4xl font-black uppercase text-slate-900 italic tracking-tighter leading-none">{activeTab}</h2><p className="text-green-600 font-bold text-[10px] md:text-xs mt-2 uppercase tracking-widest italic">{isOnline ? '● ออนไลน์ (CLOUD ACTIVE)' : '● กำลังเชื่อมต่อ...'}</p></div>
-                            {activeTab === 'summary' && isMaster && (
-                                <button onClick={() => setShowResetModal(true)} className="bg-red-50 text-red-600 px-6 py-3 rounded-2xl font-black text-xs border-2 border-red-200 hover:bg-red-600 hover:text-white transition-all uppercase tracking-widest flex items-center justify-center gap-2">
-                                    <Icon name="refresh-ccw" size={16} /> ล้างข้อมูลยกเทอม
-                                </button>
-                            )}
+                            
+                            <div className="flex gap-2">
+                                {/* ปุ่มส่งออก Excel (เพิ่มตามคำสั่ง) */}
+                                {(isAdmin || isMaster) && (
+                                    <button onClick={exportToExcel} className="bg-emerald-600 text-white px-6 py-3 rounded-2xl font-black text-xs hover:bg-emerald-700 transition-all flex items-center justify-center gap-2 shadow-lg uppercase">
+                                        <Icon name="download" size={16} /> Export Excel
+                                    </button>
+                                )}
+                                {activeTab === 'summary' && isMaster && (
+                                    <button onClick={() => setShowResetModal(true)} className="bg-red-50 text-red-600 px-6 py-3 rounded-2xl font-black text-xs border-2 border-red-200 hover:bg-red-600 hover:text-white transition-all uppercase tracking-widest flex items-center justify-center gap-2">
+                                        <Icon name="refresh-ccw" size={16} /> ล้างข้อมูลยกเทอม
+                                    </button>
+                                )}
+                            </div>
                         </header>
 
                         {activeTab === 'dashboard' && (
@@ -414,7 +442,7 @@
                                         <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-red-500 italic font-black">เริ่มวันที่</label><input type="date" value={formData.startDate} required className="w-full p-4 md:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" onChange={(e)=>setFormData({...formData, startDate:e.target.value})} /></div>
                                         <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-red-500 italic font-black">ถึงวันที่</label><input type="date" value={formData.endDate} required className="w-full p-4 md:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" onChange={(e)=>setFormData({...formData, endDate:e.target.value})} /></div>
                                     </div>
-                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400 font-black">ผู้ปฏิบัติหน้าที่แทน</label><input type="text" value={formData.substitute} required placeholder="ระบุชื่อครูปฏิบัติหน้าที่แทน" className="w-full p-4 md:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold transition-all focus:border-blue-500" onChange={(e)=>setFormData({...formData, substitute:e.target.value})} /></div>
+                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400 font-black">ผู้ปฏิบัติหน้าที่แทน</label><input type="text" value={formData.substitute} required placeholder="ระบุชื่อเพื่อนครู" className="w-full p-4 md:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold transition-all focus:border-blue-500" onChange={(e)=>setFormData({...formData, substitute:e.target.value})} /></div>
                                     <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400 font-black">เหตุผลความจำเป็น</label><textarea value={formData.reason} rows="4" required placeholder="ระบุเหตุผลในการขอลาครั้งนี้..." className="w-full p-4 md:p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500" onChange={(e)=>setFormData({...formData, reason:e.target.value})}></textarea></div>
                                     <button type="submit" disabled={isSubmitting} className="w-full bg-blue-700 text-white p-5 md:p-6 rounded-[2rem] font-black text-lg md:text-xl shadow-2xl active:scale-95 uppercase tracking-widest flex items-center justify-center gap-3 hover:bg-blue-800 transition-all">
                                         <Icon name="send" /> {isSubmitting ? 'กำลังส่งข้อมูล...' : 'ยืนยันส่งใบลาออนไลน์'}
@@ -470,7 +498,7 @@
                                     <Icon name="bar-chart-3" size={80} className="absolute right-10 opacity-10" />
                                 </div>
                                 <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 overflow-hidden shadow-sm">
-                                    <div className="table-responsive-wrapper"><table className="w-full text-left min-w-[800px]"><thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-6 md:px-8 py-6">ชื่อ-นามสกุล</th><th className="px-6 md:px-8 py-6 text-center">ลาป่วย</th><th className="px-6 md:px-8 py-6 text-center">ลากิจ</th><th className="px-6 md:px-8 py-6 text-center">ลาอื่นๆ</th><th className="px-6 md:px-8 py-6 text-center bg-slate-100">รวมทั้งหมด</th><th className="px-6 md:px-8 py-6 text-right">สถานะ</th></tr></thead><tbody className="divide-y divide-slate-100 text-slate-700 text-sm md:text-base font-black">
+                                    <div className="table-responsive-wrapper"><table className="w-full text-left min-w-[800px]"><thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-6 md:px-8 py-6">ชื่อ-นามสกุล</th><th className="px-6 md:px-8 py-6 text-center">ลาป่วย (วัน/ครั้ง)</th><th className="px-6 md:px-8 py-6 text-center">ลากิจ (วัน/ครั้ง)</th><th className="px-6 md:px-8 py-6 text-center">ลาอื่นๆ (วัน/ครั้ง)</th><th className="px-6 md:px-8 py-6 text-center bg-slate-100">รวมทั้งหมด (วัน/ครั้ง)</th><th className="px-6 md:px-8 py-6 text-right">สถานะ</th></tr></thead><tbody className="divide-y divide-slate-100 text-slate-700 text-sm md:text-base font-black">
                                         {globalSummary.map(t => (
                                             <tr key={t.id} className="hover:bg-slate-50 transition-colors">
                                                 <td className="px-6 md:px-8 py-6 font-black text-slate-900 leading-tight">{t.name}<p className="text-[10px] text-slate-400 uppercase tracking-widest mt-1">{t.pos}</p></td>
