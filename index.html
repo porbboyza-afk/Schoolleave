@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ระบบจัดการการลา - โรงเรียนหนองใสพรเจริญวิทยา</title>
-    <!-- Library ของระบบ -->
+    <!-- 1. โหลด Library สำคัญ (ห้ามสลับลำดับ) -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -14,11 +14,11 @@
     <style>
         body { 
             font-family: 'Sarabun', sans-serif; 
-            background-color: #cbd5e1; 
+            background-color: #cbd5e1; /* พื้นหลัง Slate 300 เพื่อความชัดเจน */
         }
         .teacher-card {
             transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-            border: 3px solid #94a3b8; /* ขอบหนาตามสั่ง */
+            border: 3px solid #94a3b8; /* ขอบหนา 3px ตามสั่ง */
             background-color: white;
         }
         .teacher-card:hover {
@@ -33,27 +33,33 @@
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
-        ::-webkit-scrollbar { width: 8px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #94a3b8; border-radius: 10px; }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <!-- แสดงข้อความรอโหลดเพื่อป้องกันหน้าขาว -->
+        <div class="min-h-screen flex items-center justify-center">
+            <div class="text-center font-bold text-slate-500 animate-pulse">
+                กำลังเริ่มต้นระบบจัดการการลาออนไลน์...
+            </div>
+        </div>
+    </div>
 
-    <!-- Firebase SDK Setup -->
+    <!-- 2. ส่วนเชื่อมต่อ Firebase (Modular SDK) -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc, deleteDoc, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, signInWithCustomToken, getFirestore, doc, setDoc, getDoc, collection, onSnapshot, updateDoc, deleteDoc, addDoc };
+        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, collection, onSnapshot, updateDoc, deleteDoc, addDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        // ส่งค่าไปที่ Window เพื่อให้ React (Babel) เรียกใช้ได้
+        window.FirebaseSDK = { initializeApp, getAuth, signInAnonymously, onAuthStateChanged, getFirestore, doc, setDoc, collection, onSnapshot, updateDoc, deleteDoc, addDoc };
     </script>
 
-    <!-- ส่วนโปรแกรม React -->
+    <!-- 3. ส่วนโปรแกรมหลัก -->
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
-        // --- ข้อมูลเชื่อมต่อ Firebase ของคุณ ---
+        // --- ชุดข้อมูล Firebase ของคุณ ---
         const firebaseConfig = {
             apiKey: "AIzaSyAUryuhFy1uunyyRXmFJsRARkUSbTT68FA",
             authDomain: "schoolleave-669a7.firebaseapp.com",
@@ -64,7 +70,26 @@
             measurementId: "G-3YMMBD7P6P"
         };
 
-        // ฟังก์ชันช่วยจัดการไอคอน
+        const teachersList = [
+            { id: 1, name: 'นายชุมพร กรุณานำ', pos: 'ผอ.รร', role: 'admin' },
+            { id: 2, name: 'นางสาวสรารัตน์ แก้วโสภา', pos: 'ครู คศ.3', role: 'user' },
+            { id: 3, name: 'นางจิราพร ไชยมาศ', pos: 'ครู คศ.3', role: 'user' },
+            { id: 4, name: 'นางสาวธีมาพร นามบุรี', pos: 'ครู คศ.1', role: 'user' },
+            { id: 5, name: 'นางวาสนา สุขขิน', pos: 'ครู คศ.2', role: 'user' },
+            { id: 6, name: 'นางสาวยุวดี จิตรปรีดา', pos: 'ครู คศ.3', role: 'user' },
+            { id: 7, name: 'นายครองศักดิ์ ขาวขันธ์', pos: 'ครู คศ.3', role: 'user' },
+            { id: 8, name: 'นายวิทธวัช ตาลมงคล', pos: 'ครู คศ.1', role: 'user' },
+            { id: 9, name: 'นายเอกวิทย์ ฝุ่นเงิน', pos: 'ครู คศ.2', role: 'user' },
+            { id: 10, name: 'นายราชาชัย รุ่งโรจน์', pos: 'ครู คศ.2', role: 'user' },
+            { id: 11, name: 'นางสาวนิราณี รักษาวงศ์', pos: 'ครูผู้ช่วย', role: 'user' },
+            { id: 12, name: 'นางนวลมณี สมประสงค์', pos: 'ครู คศ.3', role: 'user' },
+            { id: 13, name: 'นางสาวศิริลักษณ์ อัคนิจ', pos: 'ครู คศ.1', role: 'user' },
+            { id: 14, name: 'นายสุรศักดิ์ อุ่นแก้ว', pos: 'ครู คศ.1', role: 'user' },
+            { id: 15, name: 'นายเกรียงศักดิ์ สร้อยกลางเมือง', pos: 'ครู คศ.1', role: 'user' },
+            { id: 16, name: 'นางสาวนัฐธิยา จันทร์ศรีโคตร', pos: 'ครูอัตราจ้าง', role: 'user' },
+            { id: 17, name: 'นายปรัชญา ศรีจันทร์', pos: 'จนท.ธุรการ', role: 'user', isSecretary: true },
+        ];
+
         const Icon = ({ name, size = 24, className = "" }) => {
             const ref = useRef(null);
             useEffect(() => {
@@ -76,13 +101,12 @@
         };
 
         const App = () => {
-            // --- Firebase States ---
             const [db, setDb] = useState(null);
             const [user, setUser] = useState(null);
             const [isOnline, setIsOnline] = useState(false);
-            const appId = 'nongsai-leave-production-v1';
+            const [requests, setRequests] = useState([]);
+            const appId = 'nongsai-final-v1';
 
-            // --- UI States ---
             const [currentPage, setCurrentPage] = useState('selection'); 
             const [selectedTeacher, setSelectedTeacher] = useState(null);
             const [showLoginModal, setShowLoginModal] = useState(false);
@@ -91,34 +115,11 @@
             const [isSuccessModalOpen, setIsSuccessModalOpen] = useState(false);
             const [isSubmitting, setIsSubmitting] = useState(false);
             const [isAuthorizedMaster, setIsAuthorizedMaster] = useState(false);
-            const [notifications, setNotifications] = useState([]);
             const [requestToDelete, setRequestToDelete] = useState(null);
-
-            const [requests, setRequests] = useState([]);
-
-            const teachersList = [
-                { id: 1, name: 'นายชุมพร กรุณานำ', pos: 'ผอ.รร', role: 'admin' },
-                { id: 2, name: 'นางสาวสรารัตน์ แก้วโสภา', pos: 'ครู คศ.3', role: 'user' },
-                { id: 3, name: 'นางจิราพร ไชยมาศ', pos: 'ครู คศ.3', role: 'user' },
-                { id: 4, name: 'นางสาวธีมาพร นามบุรี', pos: 'ครู คศ.1', role: 'user' },
-                { id: 5, name: 'นางวาสนา สุขขิน', pos: 'ครู คศ.2', role: 'user' },
-                { id: 6, name: 'นางสาวยุวดี จิตรปรีดา', pos: 'ครู คศ.3', role: 'user' },
-                { id: 7, name: 'นายครองศักดิ์ ขาวขันธ์', pos: 'ครู คศ.3', role: 'user' },
-                { id: 8, name: 'นายวิทธวัช ตาลมงคล', pos: 'ครู คศ.1', role: 'user' },
-                { id: 9, name: 'นายเอกวิทย์ ฝุ่นเงิน', pos: 'ครู คศ.2', role: 'user' },
-                { id: 10, name: 'นายราชาชัย รุ่งโรจน์', pos: 'ครู คศ.2', role: 'user' },
-                { id: 11, name: 'นางสาวนิราณี รักษาวงศ์', pos: 'ครูผู้ช่วย', role: 'user' },
-                { id: 12, name: 'นางนวลมณี สมประสงค์', pos: 'ครู คศ.3', role: 'user' },
-                { id: 13, name: 'นางสาวศิริลักษณ์ อัคนิจ', pos: 'ครู คศ.1', role: 'user' },
-                { id: 14, name: 'นายสุรศักดิ์ อุ่นแก้ว', pos: 'ครู คศ.1', role: 'user' },
-                { id: 15, name: 'นายเกรียงศักดิ์ สร้อยกลางเมือง', pos: 'ครู คศ.1', role: 'user' },
-                { id: 16, name: 'นางสาวนัฐธิยา จันทร์ศรีโคตร', pos: 'ครูอัตราจ้าง', role: 'user' },
-                { id: 17, name: 'นายปรัชญา ศรีจันทร์', pos: 'จนท.ธุรการ', role: 'user', isSecretary: true },
-            ];
 
             const [formData, setFormData] = useState({ type: 'ลากิจ', startDate: '', endDate: '', reason: '', substitute: '' });
 
-            // --- ระบบเชื่อมต่อ Cloud (Firebase) ---
+            // Initialize Firebase
             useEffect(() => {
                 const init = async () => {
                     const sdk = window.FirebaseSDK;
@@ -127,23 +128,22 @@
                     const auth = sdk.getAuth(app);
                     const fbDb = sdk.getFirestore(app);
                     setDb(fbDb);
-                    
                     sdk.onAuthStateChanged(auth, (u) => setUser(u));
                     try {
                         await sdk.signInAnonymously(auth);
                         setIsOnline(true);
-                    } catch (e) { console.error("Cloud Error"); }
+                    } catch (e) { console.error("Firebase Login Error"); }
                 };
                 init();
             }, []);
 
-            // --- ดึงข้อมูล Realtime ---
+            // Realtime Sync
             useEffect(() => {
                 if (!db || !user) return;
                 const sdk = window.FirebaseSDK;
                 const unsub = sdk.onSnapshot(sdk.collection(db, 'artifacts', appId, 'public', 'data', 'requests'), (snaps) => {
                     setRequests(snaps.docs.map(d => ({ id: d.id, ...d.data() })));
-                });
+                }, (err) => console.log("Waiting for database rules..."));
                 return () => unsub();
             }, [db, user]);
 
@@ -204,7 +204,7 @@
                     setIsSuccessModalOpen(true);
                     setActiveTab('history');
                     setFormData({ type: 'ลากิจ', startDate: '', endDate: '', reason: '', substitute: '' });
-                } catch (err) { alert("Error: " + err.message); }
+                } catch (err) { alert("เกิดข้อผิดพลาด: " + err.message); }
                 finally { setIsSubmitting(false); }
             };
 
@@ -221,13 +221,13 @@
 
             if (currentPage === 'selection') {
                 return (
-                    <div className="min-h-screen p-4 md:p-12 flex flex-col items-center">
+                    <div className="min-h-screen bg-slate-300 p-4 md:p-12 flex flex-col items-center">
                         {showLoginModal && (
-                            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                            <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
                                 <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md p-10 animate-fade-in border-4 border-white text-center">
                                     <Icon name="lock" size={48} className="text-blue-600 mb-4 mx-auto" />
                                     <h3 className="text-2xl font-black text-slate-800">เข้าสู่ระบบ</h3>
-                                    <p className="text-blue-600 font-bold mb-8 uppercase text-xs">{selectedTeacher?.name}</p>
+                                    <p className="text-blue-600 font-bold mb-8 uppercase text-xs tracking-widest">{selectedTeacher?.name}</p>
                                     <form onSubmit={handleLoginSubmit} className="space-y-6">
                                         <input autoFocus type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="รหัสผ่าน" className="w-full p-4 bg-slate-50 border-2 rounded-2xl text-center text-3xl font-black tracking-widest focus:ring-4 focus:ring-blue-100 outline-none" />
                                         <div className="flex gap-4">
@@ -241,7 +241,7 @@
                         <div className="max-w-7xl w-full text-center">
                             <div className="mb-12 inline-block px-10 py-6 bg-white/95 rounded-[2.5rem] border-2 border-slate-400 shadow-2xl">
                                 <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter italic leading-none">ระบบจัดการการลา โรงเรียนหนองใส</h1>
-                                <p className="text-blue-700 font-bold uppercase tracking-widest text-[10px] mt-1">Leave Online System (พ.ศ. {currentYearBE})</p>
+                                <p className="text-blue-700 font-bold uppercase tracking-widest text-[10px] mt-1 italic">Leave Online System (พ.ศ. {currentYearBE})</p>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-6">
                                 {teachersList.map(t => (
@@ -265,47 +265,47 @@
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
                             <div className="bg-white rounded-[2.5rem] p-10 shadow-2xl max-w-sm w-full text-center border-4 border-green-50 animate-fade-in">
                                 <Icon name="check-circle" size={56} className="text-green-600 mb-6 mx-auto" />
-                                <h3 className="text-3xl font-black text-slate-800 mb-2 italic">ส่งใบลาสำเร็จ!</h3>
-                                <p className="text-slate-500 font-bold mb-8 italic text-sm">ข้อมูลถูกบันทึกลงคลาวด์แล้ว ข้อมูลจะไม่หายเมื่อรีเฟรชหน้าจอ</p>
-                                <button onClick={() => setIsSuccessModalOpen(false)} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-green-700 transition-all">รับทราบ</button>
+                                <h3 className="text-3xl font-black text-slate-800 mb-2 italic text-center">ส่งใบลาสำเร็จ!</h3>
+                                <p className="text-slate-500 font-bold mb-8 italic text-sm text-center">ข้อมูลถูกบันทึกขึ้นคลาวด์แล้ว ข้อมูลจะไม่หายเมื่อรีเฟรชหน้าจอ</p>
+                                <button onClick={() => setIsSuccessModalOpen(false)} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black shadow-lg">ตกลง</button>
                             </div>
                         </div>
                     )}
                     {requestToDelete && (
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-[2.5rem] p-10 shadow-2xl max-w-sm w-full text-center animate-fade-in">
+                            <div className="bg-white rounded-[2.5rem] p-10 shadow-2xl max-w-sm w-full text-center animate-fade-in border-4 border-red-50">
                                 <Icon name="alert-circle" size={56} className="text-red-600 mb-6 mx-auto" />
                                 <h3 className="text-2xl font-black text-slate-800 mb-2">ยืนยันการลบ?</h3>
-                                <p className="text-slate-500 mb-8">คุณต้องการลบข้อมูลการลานี้ใช่หรือไม่</p>
+                                <p className="text-slate-500 mb-8">คุณต้องการลบรายการลานี้ถาวรใช่หรือไม่</p>
                                 <div className="flex gap-4">
                                     <button onClick={() => setRequestToDelete(null)} className="flex-1 py-4 bg-slate-100 font-bold rounded-xl">ยกเลิก</button>
-                                    <button onClick={() => handleDelete(requestToDelete)} className="flex-1 py-4 bg-red-600 text-white font-black rounded-xl">ลบข้อมูล</button>
+                                    <button onClick={() => handleDelete(requestToDelete)} className="flex-1 py-4 bg-red-600 text-white font-black rounded-xl shadow-lg">ลบข้อมูล</button>
                                 </div>
                             </div>
                         </div>
                     )}
                     <aside className="md:w-72 w-full bg-white border-r-2 border-slate-200 flex flex-col h-screen sticky top-0">
-                        <div className="p-8 font-black text-blue-700 italic text-2xl border-b-2 tracking-tighter">SCHOOL CLOUD</div>
+                        <div className="p-8 font-black text-blue-700 italic text-2xl border-b-2 tracking-tighter italic">SCHOOL CLOUD</div>
                         <nav className="flex-1 p-4 space-y-2 font-bold text-slate-600">
                             <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'dashboard' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="layout-dashboard" /> แผงควบคุม</button>
                             {!isAdmin && <button onClick={() => setActiveTab('request')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'request' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="file-text" /> เขียนใบลา</button>}
                             <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'history' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="history" /> ประวัติการลา</button>
                             {(isAdmin || isMaster) && <button onClick={() => setActiveTab('admin')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'admin' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="user-check" /> พิจารณาอนุมัติ</button>}
                         </nav>
-                        <div className="p-6 border-t-2 bg-slate-50/50">
+                        <div className="p-6 border-t-2 bg-slate-50/50 text-center">
                             <p className="text-sm font-black text-slate-900 leading-tight">{selectedTeacher?.name}</p>
                             <p className="text-[10px] text-blue-600 font-bold uppercase mt-1 italic">{selectedTeacher?.pos} {isMaster && '(MASTER)'}</p>
-                            <button onClick={() => window.location.reload()} className="w-full mt-4 py-3 bg-red-50 text-red-600 rounded-2xl font-bold text-xs uppercase hover:bg-red-100 transition-all shadow-sm">Logout</button>
+                            <button onClick={() => window.location.reload()} className="w-full mt-4 py-3 bg-red-50 text-red-600 rounded-2xl font-bold text-xs uppercase shadow-sm">Logout</button>
                         </div>
                     </aside>
                     <main className="flex-1 p-4 md:p-10 overflow-y-auto">
                         <header className="mb-10 flex justify-between items-end border-b pb-6">
-                            <div><h2 className="text-4xl font-black uppercase text-slate-900 italic tracking-tighter leading-none">{activeTab}</h2><p className="text-green-600 font-bold text-xs mt-2 uppercase tracking-widest italic">{isOnline ? '● Sync Active' : '● Connecting...'}</p></div>
+                            <div><h2 className="text-4xl font-black uppercase text-slate-900 italic tracking-tighter leading-none">{activeTab}</h2><p className="text-green-600 font-bold text-xs mt-2 uppercase tracking-widest italic">{isOnline ? '● ออนไลน์' : '● กำลังเชื่อมต่อฐานข้อมูล...'}</p></div>
                         </header>
 
                         {activeTab === 'dashboard' && (
                             <div className="bg-white rounded-[2.5rem] shadow-xl border-2 border-slate-100 overflow-hidden animate-fade-in">
-                                <div className="p-10 border-b-2 font-black text-2xl uppercase italic text-slate-800 flex items-center gap-3"><Icon name="clipboard-list" className="text-blue-600" /> สรุปยอดวันลา พ.ศ. {currentYearBE}</div>
+                                <div className="p-10 border-b-2 font-black text-2xl uppercase italic text-slate-800 flex items-center gap-3"><Icon name="clipboard-list" className="text-blue-600" /> ยอดวันลา พ.ศ. {currentYearBE}</div>
                                 <div className="overflow-x-auto"><table className="w-full text-left">
                                     <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-10 py-6">ประเภท</th><th className="px-10 py-6 text-center">อนุมัติแล้ว</th><th className="px-10 py-6 text-center">รออนุมัติ</th></tr></thead>
                                     <tbody className="divide-y-2 font-bold text-slate-700 text-lg">
@@ -317,17 +317,17 @@
                         )}
 
                         {activeTab === 'request' && (
-                            <div className="max-w-3xl bg-white rounded-[2.5rem] p-10 md:p-12 shadow-xl animate-fade-in border-2">
-                                <h3 className="text-3xl font-black mb-10 uppercase border-b-4 border-blue-100 pb-4 inline-block leading-none italic">เขียนใบลาใหม่</h3>
+                            <div className="max-w-3xl bg-white rounded-[2.5rem] p-10 md:p-12 shadow-xl animate-fade-in border-2 border-slate-100">
+                                <h3 className="text-3xl font-black mb-10 uppercase border-b-4 border-blue-100 pb-4 inline-block leading-none italic font-black">ยื่นใบลาใหม่</h3>
                                 <form onSubmit={handleSubmitRequest} className="space-y-8 font-bold text-slate-700">
-                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400">ประเภทการลา</label><select name="type" value={formData.type} onChange={(e)=>setFormData({...formData, type:e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 text-lg"><option>ลากิจ</option><option>ลาป่วย</option><option>ลาคลอดบุตร</option><option>ลาช่วยภรรยา</option><option>ลาอุปสมบท</option></select></div>
+                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400 font-black">ประเภทการลา</label><select name="type" value={formData.type} onChange={(e)=>setFormData({...formData, type:e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 text-lg"><option>ลากิจ</option><option>ลาป่วย</option><option>ลาคลอดบุตร</option><option>ลาช่วยภรรยา</option><option>ลาอุปสมบท</option></select></div>
                                     <div className="grid grid-cols-2 gap-8">
-                                        <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-red-500 italic">เริ่มวันที่</label><input type="date" value={formData.startDate} required className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" onChange={(e)=>setFormData({...formData, startDate:e.target.value})} /></div>
-                                        <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-red-500 italic">ถึงวันที่</label><input type="date" value={formData.endDate} required className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" onChange={(e)=>setFormData({...formData, endDate:e.target.value})} /></div>
+                                        <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-red-500 italic font-black">เริ่มวันที่</label><input type="date" value={formData.startDate} required className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" onChange={(e)=>setFormData({...formData, startDate:e.target.value})} /></div>
+                                        <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-red-500 italic font-black">ถึงวันที่</label><input type="date" value={formData.endDate} required className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold" onChange={(e)=>setFormData({...formData, endDate:e.target.value})} /></div>
                                     </div>
-                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400">ผู้ปฏิบัติหน้าที่แทน</label><input type="text" value={formData.substitute} required placeholder="ระบุชื่อครูที่รับฝากเวร" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold transition-all focus:border-blue-500" onChange={(e)=>setFormData({...formData, substitute:e.target.value})} /></div>
-                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400">รายละเอียดเหตุผล</label><textarea value={formData.reason} rows="4" required placeholder="ระบุเหตุผลความจำเป็น..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500" onChange={(e)=>setFormData({...formData, reason:e.target.value})}></textarea></div>
-                                    <button type="submit" disabled={isSubmitting} className="w-full bg-blue-700 text-white p-6 rounded-[2rem] font-black text-xl shadow-2xl active:scale-95 uppercase tracking-widest flex items-center justify-center gap-4">
+                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400 font-black">ผู้ปฏิบัติหน้าที่แทน</label><input type="text" value={formData.substitute} required placeholder="ระบุชื่อเพื่อนครู" className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold transition-all focus:border-blue-500" onChange={(e)=>setFormData({...formData, substitute:e.target.value})} /></div>
+                                    <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400 font-black">เหตุผลความจำเป็น</label><textarea value={formData.reason} rows="4" required placeholder="ระบุเหตุผลในการขอลาครั้งนี้..." className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl font-bold outline-none focus:border-blue-500" onChange={(e)=>setFormData({...formData, reason:e.target.value})}></textarea></div>
+                                    <button type="submit" disabled={isSubmitting} className="w-full bg-blue-700 text-white p-6 rounded-[2rem] font-black text-xl shadow-2xl active:scale-95 uppercase tracking-widest flex items-center justify-center gap-4 hover:bg-blue-800 transition-all font-black">
                                         <Icon name="send" /> {isSubmitting ? 'กำลังส่งข้อมูล...' : 'ยืนยันส่งใบลาออนไลน์'}
                                     </button>
                                 </form>
@@ -336,10 +336,11 @@
 
                         {activeTab === 'history' && (
                             <div className="bg-white rounded-[2.5rem] border-2 overflow-hidden shadow-xl animate-fade-in border-slate-100">
-                                <table className="w-full text-left min-w-[600px]"><thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-10 py-6 text-left">ประเภท</th><th className="px-10 py-6 text-center">ระยะเวลาลา</th><th className="px-10 py-6 text-right">สถานะ</th><th className="px-10 py-6 text-right">ลบ</th></tr></thead><tbody className="divide-y-2 font-bold text-slate-700 text-lg">
+                                <table className="w-full text-left min-w-[600px]"><thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-10 py-6 text-left">ประเภท</th><th className="px-10 py-6 text-center">ระยะเวลาลา (พ.ศ.)</th><th className="px-10 py-6 text-right">สถานะ</th><th className="px-10 py-6 text-right">ลบ</th></tr></thead><tbody className="divide-y-2 font-bold text-slate-700 text-lg">
                                     {userRequests.map(req => (
-                                        <tr key={req.id} className="hover:bg-slate-50 transition-colors"><td className="px-10 py-8 uppercase text-sm leading-none">{req.type}</td><td className="px-10 py-8 text-center text-slate-500 italic text-sm leading-none">{formatDateBE(req.startDate)} — {formatDateBE(req.endDate)}</td><td className="px-10 py-8 text-right leading-none"><span className={`px-5 py-2 rounded-2xl text-xs font-black uppercase tracking-widest ${req.status === 'approved' ? 'bg-green-100 text-green-700' : req.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{req.status === 'approved' ? 'อนุมัติแล้ว' : 'รอดำเนินการ'}</span></td><td className="px-10 py-8 text-right"><button onClick={() => setRequestToDelete(req.id)} className="text-red-400 hover:text-red-600"><Icon name="trash-2" size={18} /></button></td></tr>
+                                        <tr key={req.id} className="hover:bg-slate-50 transition-colors"><td className="px-10 py-8 uppercase text-sm leading-none">{req.type}</td><td className="px-10 py-8 text-center text-slate-500 italic text-sm leading-none font-bold">{formatDateBE(req.startDate)} — {formatDateBE(req.endDate)}</td><td className="px-10 py-8 text-right leading-none"><span className={`px-5 py-2 rounded-2xl text-xs font-black uppercase tracking-widest ${req.status === 'approved' ? 'bg-green-100 text-green-700' : req.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{req.status === 'approved' ? 'อนุมัติแล้ว' : 'รอดำเนินการ'}</span></td><td className="px-10 py-8 text-right"><button onClick={() => setRequestToDelete(req.id)} className="text-red-400 hover:text-red-600 transition-colors"><Icon name="trash-2" size={20} /></button></td></tr>
                                     ))}
+                                    {userRequests.length === 0 && <tr><td colSpan="4" className="px-10 py-20 text-center text-slate-400 font-black italic tracking-widest opacity-20 text-2xl leading-none">ไม่พบประวัติการลา</td></tr>}
                                 </tbody></table>
                             </div>
                         )}
@@ -347,26 +348,28 @@
                         {activeTab === 'admin' && (
                             <div className="space-y-6 animate-fade-in">
                                 <div className="bg-blue-900 rounded-[3.5rem] p-10 text-white shadow-2xl flex justify-between items-center relative overflow-hidden leading-tight">
-                                    <div className="relative z-10 font-black"><h3 className="text-4xl italic uppercase tracking-tighter">PENDING</h3><p className="font-bold opacity-80 mt-1 uppercase text-xs tracking-widest italic">รายการที่รอการพิจารณาออนไลน์</p></div>
-                                    <div className="text-right z-10 font-black leading-none"><span className="text-8xl text-yellow-400">{requests.filter(r => r.status === 'pending').length}</span></div>
+                                    <div className="relative z-10 font-black"><h3 className="text-4xl italic uppercase tracking-tighter font-black">PENDING</h3><p className="font-bold opacity-80 mt-1 uppercase text-xs tracking-widest italic font-black">รายการที่รอ ผอ. พิจารณา (Cloud Data)</p></div>
+                                    <div className="text-right z-10 font-black leading-none"><span className="text-8xl text-yellow-400 font-black">{requests.filter(r => r.status === 'pending').length}</span></div>
                                 </div>
-                                {requests.filter(r => r.status === 'pending').map(req => {
-                                    const t = teachersList.find(x => x.id === req.userId);
-                                    return (
-                                        <div key={req.id} className="bg-white p-10 rounded-[2.5rem] border-2 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-8 hover:border-blue-400 animate-fade-in group">
-                                            <div className="flex-1">
-                                                <h4 className="font-black text-2xl text-slate-900 flex items-center gap-2 leading-tight">{t?.name} <span className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full uppercase ml-2">{t?.pos}</span></h4>
-                                                <div className="mt-2 text-blue-600 font-black text-sm uppercase tracking-widest flex gap-4 italic font-bold"><span>{req.type}</span><span>{formatDateBE(req.startDate)} - {formatDateBE(req.endDate)}</span></div>
-                                                <div className="bg-slate-50 p-8 rounded-[2rem] border-l-[12px] border-blue-600 mt-6 italic font-bold text-slate-600 text-xl leading-relaxed shadow-inner">"{req.reason}"</div>
-                                                <p className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] italic flex items-center gap-2 underline decoration-blue-100 decoration-4 leading-none italic">ผู้ปฏิบัติแทน: {req.substitute || '-'}</p>
+                                <div className="space-y-4">
+                                    {requests.filter(r => r.status === 'pending').map(req => {
+                                        const t = teachersList.find(x => x.id === req.userId);
+                                        return (
+                                            <div key={req.id} className="bg-white p-10 rounded-[2.5rem] border-2 shadow-xl flex flex-col lg:flex-row lg:items-center justify-between gap-8 hover:border-blue-400 animate-fade-in group border-slate-100">
+                                                <div className="flex-1">
+                                                    <h4 className="font-black text-2xl text-slate-900 flex items-center gap-2 leading-tight">{t?.name} <span className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full uppercase ml-2 font-black">{t?.pos}</span></h4>
+                                                    <div className="mt-2 text-blue-600 font-black text-sm uppercase tracking-widest flex gap-4 italic font-black"><span>{req.type}</span><span>{formatDateBE(req.startDate)} - {formatDateBE(req.endDate)}</span></div>
+                                                    <div className="bg-slate-50 p-8 rounded-[2rem] border-l-[12px] border-blue-600 mt-6 italic font-bold text-slate-600 text-xl leading-relaxed shadow-inner font-black">"{req.reason}"</div>
+                                                    <p className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] italic flex items-center gap-2 underline decoration-blue-100 decoration-4 leading-none font-black">ผู้ปฏิบัติแทน: {req.substitute || '-'}</p>
+                                                </div>
+                                                <div className="flex gap-4">
+                                                    <button onClick={() => handleApprove(req.id, 'rejected')} className="px-8 py-5 border-2 border-red-100 text-red-600 font-black rounded-2xl uppercase text-xs tracking-widest hover:bg-red-50 transition-all font-black">Reject</button>
+                                                    <button onClick={() => handleApprove(req.id, 'approved')} className="px-14 py-5 bg-emerald-600 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-xl hover:bg-emerald-700 active:scale-95 transition-all font-black">Approve</button>
+                                                </div>
                                             </div>
-                                            <div className="flex gap-4">
-                                                <button onClick={() => handleApprove(req.id, 'rejected')} className="px-8 py-5 border-2 border-red-100 text-red-600 font-black rounded-2xl uppercase text-xs tracking-widest hover:bg-red-50 transition-all">Reject</button>
-                                                <button onClick={() => handleApprove(req.id, 'approved')} className="px-14 py-5 bg-emerald-600 text-white font-black rounded-2xl uppercase text-xs tracking-widest shadow-xl hover:bg-emerald-700 active:scale-95 transition-all">Approve</button>
-                                            </div>
-                                        </div>
-                                    );
-                                })}
+                                        );
+                                    })}
+                                </div>
                             </div>
                         )}
                     </main>
