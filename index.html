@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ระบบจัดการการลา - โรงเรียนหนองใสพรเจริญวิทยา</title>
-    <!-- 1. โหลด Library หลัก (เรียงลำดับตามความสำคัญ) -->
+    <!-- 1. Library Setup -->
     <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -12,7 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@100;400;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     
-    <!-- 2. โหลด Firebase (แบบ Compat เพื่อความเสถียรสูงสุดในไฟล์เดียว) -->
+    <!-- 2. Firebase SDK Compat -->
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
@@ -29,19 +29,12 @@
     </style>
 </head>
 <body>
-    <div id="root">
-        <div class="min-h-screen flex items-center justify-center bg-slate-100">
-            <div class="text-center p-10 bg-white rounded-3xl shadow-xl border-2 border-slate-200">
-                <div class="inline-block w-12 h-12 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mb-4"></div>
-                <div class="text-xl font-black text-slate-700 animate-pulse">กำลังเชื่อมต่อฐานข้อมูล Google Cloud...</div>
-            </div>
-        </div>
-    </div>
+    <div id="root"></div>
 
     <script type="text/babel">
         const { useState, useMemo, useEffect, useRef } = React;
 
-        // --- Firebase Config (ของคุณ) ---
+        // --- Firebase Config ---
         const firebaseConfig = {
             apiKey: "AIzaSyAUryuhFy1uunyyRXmFJsRARkUSbTT68FA",
             authDomain: "schoolleave-669a7.firebaseapp.com",
@@ -72,7 +65,6 @@
             { id: 17, name: 'นายปรัชญา ศรีจันทร์', pos: 'จนท.ธุรการ', role: 'user', isSecretary: true },
         ];
 
-        // Component ช่วยจัดการไอคอน
         const Icon = ({ name, size = 24, className = "" }) => {
             const ref = useRef(null);
             useEffect(() => {
@@ -87,7 +79,7 @@
             const [db, setDb] = useState(null);
             const [isOnline, setIsOnline] = useState(false);
             const [requests, setRequests] = useState([]);
-            const appId = 'school-leave-final-v3';
+            const appId = 'school-leave-v4-production';
 
             const [currentPage, setCurrentPage] = useState('selection'); 
             const [selectedTeacher, setSelectedTeacher] = useState(null);
@@ -108,10 +100,9 @@
                 }
                 const firestore = firebase.firestore();
                 setDb(firestore);
-
                 firebase.auth().signInAnonymously().then(() => {
                     setIsOnline(true);
-                }).catch(err => console.error("Firebase Auth Fail", err));
+                }).catch(err => console.error("Cloud Error", err));
             }, []);
 
             // Realtime Sync
@@ -119,9 +110,8 @@
                 if (!db || !isOnline) return;
                 const unsub = db.collection('artifacts').doc(appId).collection('public_data')
                     .onSnapshot((snaps) => {
-                        const data = snaps.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                        setRequests(data);
-                    }, (err) => console.log("Waiting for Rules..."));
+                        setRequests(snaps.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+                    }, (err) => console.log("Check Firebase Rules"));
                 return () => unsub();
             }, [db, isOnline]);
 
@@ -130,6 +120,8 @@
             const currentYearBE = 2569;
 
             const userRequests = useMemo(() => selectedTeacher ? requests.filter(r => r.userId === selectedTeacher.id) : [], [requests, selectedTeacher]);
+            
+            // สถิติส่วนบุคคล
             const stats = useMemo(() => {
                 const calc = (type) => ({ 
                     used: userRequests.filter(r => r.type === type && r.status === 'approved').length, 
@@ -137,6 +129,31 @@
                 });
                 return { personal: calc('ลากิจ'), sick: calc('ลาป่วย'), maternity: calc('ลาคลอดบุตร'), paternity: calc('ลาช่วยภรรยา'), ordination: calc('ลาอุปสมบท') };
             }, [userRequests]);
+
+            // สถิติสำหรับ ผอ. (รวมทั้งโรงเรียน)
+            const globalSummary = useMemo(() => {
+                return teachersList.map(t => {
+                    const teacherRequests = requests.filter(r => r.userId === t.id && r.status === 'approved');
+                    const calculateTotalDays = (type) => {
+                        return teacherRequests
+                            .filter(r => r.type === type)
+                            .reduce((acc, curr) => {
+                                const start = new Date(curr.startDate.replace(/(\d{4})/, (m) => parseInt(m) - 543));
+                                const end = new Date(curr.endDate.replace(/(\d{4})/, (m) => parseInt(m) - 543));
+                                const diffTime = Math.abs(end - start);
+                                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                                return acc + (isNaN(diffDays) ? 0 : diffDays);
+                            }, 0);
+                    };
+                    return {
+                        ...t,
+                        sick: calculateTotalDays('ลาป่วย'),
+                        personal: calculateTotalDays('ลากิจ'),
+                        others: calculateTotalDays('ลาคลอดบุตร') + calculateTotalDays('ลาช่วยภรรยา') + calculateTotalDays('ลาอุปสมบท'),
+                        total: calculateTotalDays('ลาป่วย') + calculateTotalDays('ลากิจ') + calculateTotalDays('ลาคลอดบุตร') + calculateTotalDays('ลาช่วยภรรยา') + calculateTotalDays('ลาอุปสมบท')
+                    };
+                }).filter(t => t.role !== 'admin');
+            }, [requests]);
 
             const formatDateBE = (dateStr) => {
                 if (!dateStr) return '';
@@ -196,25 +213,25 @@
 
             if (currentPage === 'selection') {
                 return (
-                    <div className="min-h-screen bg-slate-300 p-4 md:p-12 flex flex-col items-center animate-fade-in">
+                    <div className="min-h-screen bg-slate-300 p-4 md:p-12 flex flex-col items-center">
                         {showLoginModal && (
                             <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-md z-[100] flex items-center justify-center p-4">
-                                <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md p-10 animate-fade-in border-4 border-white text-center">
+                                <div className="bg-white rounded-[2rem] shadow-2xl w-full max-w-md p-10 animate-fade-in border-4 border-white text-center">
                                     <Icon name="lock" size={48} className="text-blue-600 mb-4 mx-auto" />
-                                    <h3 className="text-2xl font-black text-slate-800">เข้าสู่ระบบ</h3>
-                                    <p className="text-blue-600 font-bold mb-8 uppercase text-xs">{selectedTeacher?.name}</p>
+                                    <h3 className="text-2xl font-black text-slate-800 tracking-tight">ยืนยันตัวตน</h3>
+                                    <p className="text-blue-600 font-bold mb-8 uppercase text-xs tracking-widest">{selectedTeacher?.name}</p>
                                     <form onSubmit={handleLoginSubmit} className="space-y-6">
-                                        <input autoFocus type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="ป้อนรหัส 4 หลัก" className="w-full p-4 bg-slate-50 border-2 rounded-2xl text-center text-3xl font-black tracking-widest outline-none focus:ring-4 focus:ring-blue-100" />
+                                        <input autoFocus type="password" value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} placeholder="รหัสผ่าน" className="w-full p-4 bg-slate-50 border-2 rounded-2xl text-center text-3xl font-black tracking-widest outline-none focus:ring-4 focus:ring-blue-100" />
                                         <div className="flex gap-4">
-                                            <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-100 rounded-xl">ยกเลิก</button>
-                                            <button type="submit" className="flex-1 bg-blue-700 text-white py-4 rounded-2xl font-black shadow-lg">ตกลง</button>
+                                            <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-4 text-slate-500 font-bold hover:bg-slate-100 rounded-xl transition-all">ยกเลิก</button>
+                                            <button type="submit" className="flex-1 bg-blue-700 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-blue-800">ตกลง</button>
                                         </div>
                                     </form>
                                 </div>
                             </div>
                         )}
                         <div className="max-w-7xl w-full text-center">
-                            <div className="mb-12 inline-block px-10 py-6 bg-white/95 rounded-[2.5rem] border-2 border-slate-400 shadow-2xl">
+                            <div className="mb-12 inline-block px-10 py-6 bg-white/95 rounded-[2.5rem] border-2 border-slate-400 shadow-2xl animate-fade-in">
                                 <h1 className="text-4xl font-black text-slate-900 uppercase tracking-tighter italic leading-none">ระบบจัดการการลา โรงเรียนหนองใส</h1>
                                 <p className="text-blue-700 font-bold uppercase tracking-widest text-[10px] mt-1 italic">Leave Online Cloud (พ.ศ. {currentYearBE})</p>
                             </div>
@@ -240,32 +257,20 @@
                         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
                             <div className="bg-white rounded-[2.5rem] p-10 shadow-2xl max-w-sm w-full text-center border-4 border-green-50 animate-fade-in">
                                 <Icon name="check-circle" size={56} className="text-green-600 mb-6 mx-auto" />
-                                <h3 className="text-3xl font-black text-slate-800 mb-2 italic">ส่งใบลาสำเร็จ!</h3>
-                                <p className="text-slate-500 font-bold mb-8 italic text-sm text-center">ข้อมูลถูกบันทึกลง Google Cloud แล้ว ข้อมูลจะไม่หายเมื่อรีเฟรชหน้าจอ</p>
+                                <h3 className="text-3xl font-black text-slate-800 mb-2 italic text-center">ส่งใบลาสำเร็จ!</h3>
+                                <p className="text-slate-500 font-bold mb-8 italic text-sm text-center">ข้อมูลถูกบันทึกขึ้นคลาวด์แล้ว ข้อมูลจะไม่หายเมื่อรีเฟรชหน้าจอ</p>
                                 <button onClick={() => setIsSuccessModalOpen(false)} className="w-full bg-green-600 text-white py-4 rounded-2xl font-black shadow-lg hover:bg-green-700 transition-all">ตกลง</button>
                             </div>
                         </div>
                     )}
-                    {requestToDelete && (
-                        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-[200] flex items-center justify-center p-4">
-                            <div className="bg-white rounded-[2.5rem] p-10 shadow-2xl max-w-sm w-full text-center animate-fade-in border-4 border-red-50">
-                                <Icon name="alert-circle" size={56} className="text-red-600 mb-6 mx-auto" />
-                                <h3 className="text-2xl font-black text-slate-800 mb-2">ยืนยันการลบ?</h3>
-                                <p className="text-slate-500 mb-8 font-bold">คุณต้องการลบรายการลานี้ถาวรใช่หรือไม่</p>
-                                <div className="flex gap-4">
-                                    <button onClick={() => setRequestToDelete(null)} className="flex-1 py-4 bg-slate-100 font-bold rounded-xl">ยกเลิก</button>
-                                    <button onClick={() => handleDelete(requestToDelete)} className="flex-1 py-4 bg-red-600 text-white font-black rounded-xl shadow-lg">ลบข้อมูล</button>
-                                </div>
-                            </div>
-                        </div>
-                    )}
                     <aside className="md:w-72 w-full bg-white border-r-2 border-slate-200 flex flex-col h-screen sticky top-0">
-                        <div className="p-8 font-black text-blue-700 italic text-2xl border-b-2 tracking-tighter">SCHOOL LEAVE</div>
+                        <div className="p-8 font-black text-blue-700 italic text-2xl border-b-2 tracking-tighter italic">SCHOOL CLOUD</div>
                         <nav className="flex-1 p-4 space-y-2 font-bold text-slate-600">
                             <button onClick={() => setActiveTab('dashboard')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'dashboard' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="layout-dashboard" /> แผงควบคุม</button>
                             {!isAdmin && <button onClick={() => setActiveTab('request')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'request' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="file-text" /> เขียนใบลา</button>}
                             <button onClick={() => setActiveTab('history')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'history' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="history" /> ประวัติการลา</button>
                             {(isAdmin || isMaster) && <button onClick={() => setActiveTab('admin')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'admin' ? 'bg-blue-700 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="user-check" /> พิจารณาอนุมัติ</button>}
+                            {(isAdmin || isMaster) && <button onClick={() => setActiveTab('summary')} className={`w-full flex items-center gap-3 px-4 py-4 rounded-2xl transition-all ${activeTab === 'summary' ? 'bg-amber-600 text-white shadow-lg' : 'hover:bg-slate-50'}`}><Icon name="bar-chart-3" /> สรุปการลาครู</button>}
                         </nav>
                         <div className="p-6 border-t-2 bg-slate-50/50 text-center">
                             <p className="text-sm font-black text-slate-900 leading-tight">{selectedTeacher?.name}</p>
@@ -274,16 +279,15 @@
                         </div>
                     </aside>
                     <main className="flex-1 p-4 md:p-10 overflow-y-auto animate-fade-in">
-                        <header className="mb-10 border-b pb-6">
-                            <h2 className="text-4xl font-black text-slate-900 uppercase italic tracking-tighter leading-none">{activeTab}</h2>
-                            <p className="text-green-600 font-bold text-xs mt-2 uppercase tracking-widest italic">{isOnline ? '● ออนไลน์ (Google Cloud Ready)' : '● กำลังเชื่อมต่อ...'}</p>
+                        <header className="mb-10 flex justify-between items-end border-b pb-6">
+                            <div><h2 className="text-4xl font-black uppercase text-slate-900 italic tracking-tighter leading-none">{activeTab}</h2><p className="text-green-600 font-bold text-xs mt-2 uppercase tracking-widest italic">{isOnline ? '● ออนไลน์' : '● กำลังเชื่อมต่อฐานข้อมูล...'}</p></div>
                         </header>
 
                         {activeTab === 'dashboard' && (
                             <div className="bg-white rounded-[2.5rem] shadow-xl border-2 border-slate-100 overflow-hidden">
                                 <div className="p-10 border-b-2 font-black text-2xl uppercase italic text-slate-800 flex items-center gap-3"><Icon name="clipboard-list" className="text-blue-600" /> ยอดวันลา พ.ศ. {currentYearBE}</div>
                                 <div className="overflow-x-auto"><table className="w-full text-left">
-                                    <thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest"><tr><th className="px-10 py-6">ประเภท</th><th className="px-10 py-6 text-center">อนุมัติแล้ว</th><th className="px-10 py-6 text-center">รออนุมัติ</th></tr></thead>
+                                    <thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-10 py-6">ประเภท</th><th className="px-10 py-6 text-center">อนุมัติแล้ว</th><th className="px-10 py-6 text-center">รออนุมัติ</th></tr></thead>
                                     <tbody className="divide-y-2 font-bold text-slate-700 text-lg">
                                         {[{t:'ลากิจ', s:stats.personal}, {t:'ลาป่วย', s:stats.sick}, {t:'ลาคลอดบุตร', s:stats.maternity}, {t:'ลาช่วยภรรยา', s:stats.paternity}, {t:'ลาอุปสมบท', s:stats.ordination}].map((r, i) => (
                                             <tr key={i} className="hover:bg-slate-50 transition-colors font-bold"><td className="px-10 py-8 text-lg uppercase leading-none">{r.t}</td><td className="px-10 py-8 text-center text-emerald-600 text-4xl font-black leading-none">{r.s.used}</td><td className="px-10 py-8 text-center text-amber-500 text-4xl font-black leading-none">{r.s.pending}</td></tr>
@@ -293,7 +297,7 @@
                         )}
 
                         {activeTab === 'request' && (
-                            <div className="max-w-3xl bg-white rounded-[2.5rem] p-10 md:p-12 shadow-xl border-2 border-slate-100">
+                            <div className="max-w-3xl bg-white rounded-[2.5rem] p-10 md:p-12 shadow-xl animate-fade-in border-2 border-slate-100">
                                 <h3 className="text-3xl font-black mb-10 uppercase border-b-4 border-blue-100 pb-4 inline-block leading-none italic font-black">ยื่นใบลาใหม่</h3>
                                 <form onSubmit={handleSubmitRequest} className="space-y-8 font-bold text-slate-700">
                                     <div className="space-y-2"><label className="text-xs uppercase tracking-widest text-slate-400 font-black">ประเภทการลา</label><select name="type" value={formData.type} onChange={(e)=>setFormData({...formData, type:e.target.value})} className="w-full p-5 bg-slate-50 border-2 border-slate-100 rounded-2xl outline-none focus:ring-4 focus:ring-blue-100 text-lg"><option>ลากิจ</option><option>ลาป่วย</option><option>ลาคลอดบุตร</option><option>ลาช่วยภรรยา</option><option>ลาอุปสมบท</option></select></div>
@@ -312,11 +316,11 @@
 
                         {activeTab === 'history' && (
                             <div className="bg-white rounded-[2.5rem] border-2 overflow-hidden shadow-xl border-slate-100">
-                                <table className="w-full text-left min-w-[600px]"><thead className="bg-slate-50 text-slate-400 text-[10px] font-black uppercase tracking-widest"><tr><th className="px-10 py-6 text-left">ประเภท</th><th className="px-10 py-6 text-center">ระยะเวลาลา (พ.ศ.)</th><th className="px-10 py-6 text-right">สถานะ</th><th className="px-10 py-6 text-right">ลบ</th></tr></thead><tbody className="divide-y-2 font-bold text-slate-700 text-lg">
+                                <table className="w-full text-left min-w-[600px]"><thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-10 py-6 text-left">ประเภท</th><th className="px-10 py-6 text-center">ระยะเวลาลา (พ.ศ.)</th><th className="px-10 py-6 text-right">สถานะ</th></tr></thead><tbody className="divide-y-2 font-bold text-slate-700 text-lg">
                                     {userRequests.map(req => (
-                                        <tr key={req.id} className="hover:bg-slate-50 transition-colors"><td className="px-10 py-8 uppercase text-sm leading-none">{req.type}</td><td className="px-10 py-8 text-center text-slate-500 italic text-sm leading-none font-bold">{formatDateBE(req.startDate)} — {formatDateBE(req.endDate)}</td><td className="px-10 py-8 text-right leading-none"><span className={`px-5 py-2 rounded-2xl text-xs font-black uppercase tracking-widest ${req.status === 'approved' ? 'bg-green-100 text-green-700' : req.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{req.status === 'approved' ? 'อนุมัติแล้ว' : 'รอดำเนินการ'}</span></td><td className="px-10 py-8 text-right"><button onClick={() => setRequestToDelete(req.id)} className="text-red-400 hover:text-red-600 transition-colors"><Icon name="trash-2" size={20} /></button></td></tr>
+                                        <tr key={req.id} className="hover:bg-slate-50 transition-colors font-bold"><td className="px-10 py-8 uppercase text-sm leading-none">{req.type}</td><td className="px-10 py-8 text-center text-slate-500 italic text-sm leading-none font-bold">{formatDateBE(req.startDate)} — {formatDateBE(req.endDate)}</td><td className="px-10 py-8 text-right leading-none"><span className={`px-5 py-2 rounded-2xl text-xs font-black uppercase tracking-widest ${req.status === 'approved' ? 'bg-green-100 text-green-700' : req.status === 'pending' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{req.status === 'approved' ? 'อนุมัติแล้ว' : 'รอดำเนินการ'}</span></td></tr>
                                     ))}
-                                    {userRequests.length === 0 && <tr><td colSpan="4" className="px-10 py-20 text-center text-slate-400 font-black italic tracking-widest opacity-20 text-2xl leading-none">ไม่พบประวัติการลา</td></tr>}
+                                    {userRequests.length === 0 && <tr><td colSpan="3" className="px-10 py-20 text-center text-slate-400 font-black italic tracking-widest opacity-20 text-2xl leading-none italic">ไม่พบประวัติการลาออนไลน์</td></tr>}
                                 </tbody></table>
                             </div>
                         )}
@@ -324,7 +328,7 @@
                         {activeTab === 'admin' && (
                             <div className="space-y-6">
                                 <div className="bg-blue-900 rounded-[3.5rem] p-10 text-white shadow-2xl flex justify-between items-center relative overflow-hidden leading-tight">
-                                    <div className="relative z-10 font-black"><h3 className="text-4xl italic uppercase tracking-tighter font-black">PENDING</h3><p className="font-bold opacity-80 mt-1 uppercase text-xs tracking-widest italic font-black">รายการที่รอพิจารณาออนไลน์</p></div>
+                                    <div className="relative z-10 font-black"><h3 className="text-4xl italic uppercase tracking-tighter font-black">PENDING</h3><p className="font-bold opacity-80 mt-1 uppercase text-xs tracking-widest italic font-black text-slate-200">รายการที่รอพิจารณาออนไลน์</p></div>
                                     <div className="text-right z-10 font-black leading-none"><span className="text-8xl text-yellow-400 font-black">{requests.filter(r => r.status === 'pending').length}</span></div>
                                 </div>
                                 <div className="space-y-4">
@@ -336,7 +340,7 @@
                                                     <h4 className="font-black text-2xl text-slate-900 flex items-center gap-2 leading-tight">{t?.name} <span className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded-full uppercase ml-2 font-black">{t?.pos}</span></h4>
                                                     <div className="mt-2 text-blue-600 font-black text-sm uppercase tracking-widest flex gap-4 italic font-bold"><span>{req.type}</span><span>{formatDateBE(req.startDate)} - {formatDateBE(req.endDate)}</span></div>
                                                     <div className="bg-slate-50 p-8 rounded-[2rem] border-l-[12px] border-blue-600 mt-6 italic font-bold text-slate-600 text-xl leading-relaxed shadow-inner font-black">"{req.reason}"</div>
-                                                    <p className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] italic flex items-center gap-2 underline decoration-blue-100 decoration-4 leading-none font-black">ผู้ปฏิบัติแทน: {req.substitute || '-'}</p>
+                                                    <p className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-[0.3em] italic flex items-center gap-2 underline decoration-blue-100 decoration-4 leading-none font-black italic">ผู้ปฏิบัติแทน: {req.substitute || '-'}</p>
                                                 </div>
                                                 <div className="flex gap-4">
                                                     <button onClick={() => handleApprove(req.id, 'rejected')} className="px-8 py-5 border-2 border-red-100 text-red-600 font-black rounded-2xl uppercase text-xs tracking-widest hover:bg-red-50 transition-all font-black">Reject</button>
@@ -345,6 +349,30 @@
                                             </div>
                                         );
                                     })}
+                                    {requests.filter(r => r.status === 'pending').length === 0 && <div className="text-center py-20 text-slate-400 font-black uppercase italic opacity-30 text-2xl tracking-widest">No Pending Items</div>}
+                                </div>
+                            </div>
+                        )}
+
+                        {activeTab === 'summary' && (
+                            <div className="space-y-6 animate-fade-in">
+                                <div className="bg-amber-600 rounded-[3rem] p-10 text-white shadow-xl flex justify-between items-center relative overflow-hidden">
+                                    <div className="relative z-10 font-black"><h3 className="text-4xl italic uppercase tracking-tighter">LEAVE SUMMARY</h3><p className="font-bold opacity-90 mt-1 uppercase text-xs tracking-widest italic">สรุปยอดวันลาสะสมของบุคลากรทุกคน (อนุมัติแล้ว)</p></div>
+                                    <Icon name="bar-chart-3" size={100} className="absolute right-10 opacity-10" />
+                                </div>
+                                <div className="bg-white rounded-[2.5rem] border-2 border-slate-100 overflow-hidden shadow-sm overflow-x-auto">
+                                    <table className="w-full text-left min-w-[900px]"><thead className="bg-slate-50 text-[10px] font-black uppercase tracking-widest text-slate-400"><tr><th className="px-8 py-6">ชื่อ-นามสกุล</th><th className="px-8 py-6 text-center">ลาป่วย (วัน)</th><th className="px-8 py-6 text-center">ลากิจ (วัน)</th><th className="px-8 py-6 text-center">ลาอื่นๆ (วัน)</th><th className="px-8 py-6 text-center">รวมทั้งหมด</th><th className="px-8 py-6 text-right">สถานะ</th></tr></thead><tbody className="divide-y divide-slate-100 font-bold text-slate-700 text-base">
+                                        {globalSummary.map(t => (
+                                            <tr key={t.id} className="hover:bg-slate-50 transition-colors">
+                                                <td className="px-8 py-6 font-black text-slate-900 leading-tight">{t.name}<p className="text-[10px] text-slate-400 uppercase tracking-widest font-black">{t.pos}</p></td>
+                                                <td className="px-8 py-6 text-center text-red-600 text-xl font-black">{t.sick || 0}</td>
+                                                <td className="px-8 py-6 text-center text-blue-600 text-xl font-black">{t.personal || 0}</td>
+                                                <td className="px-8 py-6 text-center text-amber-600 text-xl font-black">{t.others || 0}</td>
+                                                <td className="px-8 py-6 text-center bg-slate-50 text-slate-900 text-2xl font-black">{t.total || 0}</td>
+                                                <td className="px-8 py-6 text-right"><span className="text-[10px] bg-green-100 text-green-600 px-3 py-1 rounded-full uppercase font-black">Verified</span></td>
+                                            </tr>
+                                        ))}
+                                    </tbody></table>
                                 </div>
                             </div>
                         )}
