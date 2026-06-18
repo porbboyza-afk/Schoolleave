@@ -255,23 +255,134 @@
 
         // Default 17 Teachers List
         const defaultTeachers = [
-            { id: 1, name: 'นายชุมพร กรุณานำ', pos: 'ผู้อำนวยการโรงเรียน', role: 'admin' },
-            { id: 2, name: 'นางสาวสราลักษณ์ แก้วโสภา', pos: 'ครู คศ.3', role: 'user' },
-            { id: 3, name: 'นางสาวจิราพร ไชยมาศ', pos: 'ครู คศ.3', role: 'user' },
-            { id: 4, name: 'นางสาวธีมาพร นามบุรี', pos: 'ครู คศ.1', role: 'user' },
-            { id: 5, name: 'นางวาสนา สุขขิน', pos: 'ครู คศ.2', role: 'user' },
-            { id: 6, name: 'นางสาวยุวดี จิตรปรีดา', pos: 'ครู คศ.3', role: 'user' },
-            { id: 7, name: 'นายครองศักดิ์ ขาวขันธ์', pos: 'ครู คศ.3', role: 'user' },
-            { id: 8, name: 'นายวิทธวัช ตาลมงคล', pos: 'ครู คศ.1', role: 'user' },
-            { id: 9, name: 'นายเอกวิทย์ ฝุ่นเงิน', pos: 'ครู คศ.2', role: 'user' },
-            { id: 10, name: 'นายราชาชัย รุ่งโรจน์', pos: 'ครู คศ.2', role: 'user' },
-            { id: 11, name: 'นางสาวนิราณี รักษาวงศ์', pos: 'ครูผู้ช่วย', role: 'user' },
-            { id: 12, name: 'นางนวลมณี สมประสงค์', pos: 'ครู คศ.3', role: 'user' },
-            { id: 13, name: 'นางสาวศิริลักษณ์ อัคนิจ', pos: 'ครู คศ.1', role: 'user' },
-            { id: 14, name: 'นายสุรศักดิ์ อุ่นแก้ว', pos: 'ครู คศ.2', role: 'user' },
-            { id: 15, name: 'นายเกรียงศักดิ์ สร้อยกลางเมือง', pos: 'ครู คศ.1', role: 'user' },
-            { id: 16, name: 'นางสาวนัฐธิยา จันทร์ศรีโคตร', pos: 'ครูอัตราจ้าง', role: 'user' },
-            { id: 17, name: 'นายปรัชญา ศรีจันทร์', pos: 'ธุรการโรงเรียน', role: 'user', isSecretary: true }
+        
+            {
+                        "id": 1,
+                        "name": "นายชุมพร กรุณานำ",
+                        "pos": "ผอ.รร",
+                        "role": "admin",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 2,
+                        "name": "นางสาวสรารัตน์ แก้วโสภา",
+                        "pos": "ครู คศ.2",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 3,
+                        "name": "นางจิราพร ไชยมาศ",
+                        "pos": "ครู คศ.3",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 4,
+                        "name": "นางสาวธีมาพร นามบุรี",
+                        "pos": "ครู คศ.1",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 5,
+                        "name": "นางวาสนา สุขชิน",
+                        "pos": "ครู คศ.2",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 6,
+                        "name": "นางสาวยุวดี จิตรปรีดา",
+                        "pos": "ครู คศ.3",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 7,
+                        "name": "นายครองศักดิ์ ขาวขันธ์",
+                        "pos": "ครู คศ.3",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 8,
+                        "name": "นายวิทธวัช ตาลมงคล",
+                        "pos": "ครู คศ.1",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 9,
+                        "name": "นายเอกวิทย์ ฝุ่นเงิน",
+                        "pos": "ครู คศ.2",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 10,
+                        "name": "นายราชาชัย รุ่งโรจน์",
+                        "pos": "ครู คศ.2",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 11,
+                        "name": "นางสาวนิราณี รักษาวงศ์",
+                        "pos": "ครูผู้ช่วย",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 12,
+                        "name": "นางนวลมณี สมประสงค์",
+                        "pos": "ครู คศ.3",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 13,
+                        "name": "นางสาวศิริลักษณ์ อัคนิจ",
+                        "pos": "ครู คศ.1",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 14,
+                        "name": "นายสุรศักดิ์ อุ่นแก้ว",
+                        "pos": "ครู ค.ศ.1",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 15,
+                        "name": "นายเกรียงศักดิ์ สร้อยกลางเมือง",
+                        "pos": "ครู ค.ศ.1",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 16,
+                        "name": "นางสาวนัฐธิยา จันทร์ศรีโคตร",
+                        "pos": "ครูอัตราจ้าง",
+                        "role": "user",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 17,
+                        "name": "นายปรัชญา ศรีจันทร์",
+                        "pos": "จนท.ธุรการ",
+                        "role": "admin",
+                        "isSecretary": ""
+            },
+            {
+                        "id": 18,
+                        "name": "นายไพรทูรย์ จันทร์สีโคตร",
+                        "pos": "นักการภารโรง",
+                        "role": "user",
+                        "isSecretary": ""
+            }
+        
         ];
 
         // Helper component for Lucide Icons
