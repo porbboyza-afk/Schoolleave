@@ -915,6 +915,17 @@
             // Format date for Thai layout (DD/MM/BE)
             const formatDateBE = (dateStr) => {
                 if (!dateStr) return '-';
+                // Google Sheets returns ISO UTC string e.g. "2569-06-09T17:00:00.000Z"
+                // Add +7h (Thailand UTC+7) to get the correct local date back
+                if (typeof dateStr === 'string' && dateStr.includes('T')) {
+                    const d = new Date(dateStr);
+                    const thai = new Date(d.getTime() + 7 * 60 * 60 * 1000);
+                    const y = thai.getUTCFullYear();
+                    const mo = String(thai.getUTCMonth() + 1).padStart(2, '0');
+                    const dy = String(thai.getUTCDate()).padStart(2, '0');
+                    const yearBE = y < 2400 ? y + 543 : y;
+                    return `${dy}/${mo}/${yearBE}`;
+                }
                 const parts = dateStr.split('-');
                 if (parts.length !== 3) return dateStr;
                 const year = parseInt(parts[0]);
